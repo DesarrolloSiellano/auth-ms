@@ -1,0 +1,21 @@
+version: "3.8"
+
+networks:
+  mongo_net:
+    external: true
+
+services:
+  nest_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nest_app
+    restart: always
+    depends_on:
+      - mongodb
+    env_file:
+      - .env
+    ports:
+      - "3010:3010"
+    networks:
+      - mongo_net
