@@ -49,10 +49,9 @@ jobs:
 
             git pull origin ${{ secrets.MAIN_BRANCH }}
 
-            # Actualiza imágenes, reconstruye y levanta con docker-compose
-            docker-compose pull
-            docker-compose build
-            docker-compose up -d --remove-orphans
+            docker compose down --volumes --remove-orphans
+            docker image prune -a -f
+            docker compose pull
+            docker compose build
+            docker compose up -d --remove-orphans
 
-            # Opcional: limpiar imágenes antiguas
-            docker image prune -f
