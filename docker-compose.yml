@@ -6,14 +6,11 @@ networks:
 
 services:
   nest_app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: nest_app
-    restart: always
-    env_file:
-      - .env
+    build: .
+    container_name: nest_app_auth-ms
     ports:
       - "3010:3010"
+    env_file:
+      - .env
     networks:
-      - mongo_net
+      - mongo-express_mongo_net
