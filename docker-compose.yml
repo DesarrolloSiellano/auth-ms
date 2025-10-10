@@ -11,8 +11,6 @@ services:
       dockerfile: Dockerfile
     container_name: nest_app
     restart: always
-    depends_on:
-      - mongodb
     env_file:
       - .env
     ports:
