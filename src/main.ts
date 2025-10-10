@@ -69,7 +69,7 @@ Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo m
 
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  document.servers = [{ url: '/auth/api' }];
+  document.servers = [{ url: '/auth/' }];
   SwaggerModule.setup('api-docs', app, document); // http://localhost:PORT/api-docs
 
   // Microservicio TCP
