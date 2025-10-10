@@ -7,7 +7,7 @@ networks:
 services:
   nest_app:
     build: .
-    container_name: nest_app
+    container_name: nest_app_auth-ms
     ports:
       - "3010:3010"
     env_file:
