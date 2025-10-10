@@ -216,9 +216,12 @@ export class UsersService {
 
   async update(id: string, updateUserDto: UpdateUserDto) {
     try {
+      const { password, ...updateData } = updateUserDto;
+
       const updatedUser = await this.userModel
-        .findByIdAndUpdate(id, updateUserDto, { new: true })
+        .findByIdAndUpdate(id, updateData, { new: true })
         .exec();
+
       if (!updatedUser) {
         throw new NotFoundException(`User with ID ${id} not found`);
       }
