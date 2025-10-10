@@ -1,0 +1,58 @@
+name: Deploy backend auth-ms to Remote Server
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy backend-auth-ms
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy to remote server via SSH
+        if: github.event.pull_request.merged == true
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            # Cargar bashrc por si hay variables personalizadas
+            source ~/.bashrc
+
+            # Navegar al directorio del proyecto
+            cd /opt/auth-ms
+
+            # Configurar Git para usar SSH si es necesario
+            git remote set-url origin git@github.com:${{ github.repository }}.git
+
+            # Obtener los cambios del repositorio
+            git fetch
+            current_branch=$(git rev-parse --abbrev-ref HEAD)
+            echo "Branch actual: $current_branch"
+
+            if [ "$current_branch" != "${{ secrets.MAIN_BRANCH }}" ]; then
+              echo "Cambiando a la rama ${{ secrets.MAIN_BRANCH }}"
+              git checkout ${{ secrets.MAIN_BRANCH }}
+            fi
+
+            git pull origin ${{ secrets.MAIN_BRANCH }}
+
+            # Actualiza imágenes, reconstruye y levanta con docker-compose
+            docker-compose pull
+            docker-compose build
+            docker-compose up -d --remove-orphans
+
+            # Opcional: limpiar imágenes antiguas
+            docker image prune -f
