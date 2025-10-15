@@ -1,8 +1,24 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import express from 'express';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { AuthService } from './auth.service';
 import { ChangePassword, Login, RecoveryPassword } from './dto/auth.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { UserPayload } from 'src/core/interfaces/user-payload.interface';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtTCPStrategy } from 'src/core/strategies/jwtTCP.strategy';
@@ -49,9 +65,28 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
   @ApiBody({ type: Login })
-  login(@Body() login: Login) {
-    return this.authService.login(login);
+  @Post('login')
+@Post('login')
+async login(
+  @Body() login: Login,
+  @Query('redirectUri') redirectUri: string,
+  @Res() res: express.Response,
+) {
+  
+  const result = await this.authService.login(login);
+
+  if (redirectUri) {
+    // Validar redirectUri según whitelist si es necesario
+    const url = new URL(redirectUri);
+    url.searchParams.append('access_token', result.meta.token);
+
+    res.json({ url: url.toString(), message: 'Login successful', statusCode: 200 }); // Aquí no se retorna nada
+    return; // Termina ejecución aquí
   }
+
+  return res.json(result); // En resto de casos si retorna json
+}
+
 
   @Post('change-password')
   @ApiOperation({ summary: 'Cambiar contraseña' })
@@ -73,7 +108,7 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   @ApiResponse({ status: 400, description: 'Error al cambiar contraseña' })
   @ApiBody({ type: ChangePassword })
-  changePassword(@Body() changePassword: ChangePassword) {    
+  changePassword(@Body() changePassword: ChangePassword) {
     return this.authService.changePassword(changePassword);
   }
 
@@ -156,7 +191,6 @@ export class AuthController {
     };
   }
 
-
   @Post('recovery-password')
   @ApiOperation({ summary: 'Recuperar contraseña' })
   @ApiResponse({
@@ -177,12 +211,9 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
   @ApiResponse({ status: 500, description: 'Error al actualizar contraseña' })
   @ApiBody({ type: RecoveryPassword })
-  recoveryPassword(@Body() recoveryPassword: RecoveryPassword) {        
+  recoveryPassword(@Body() recoveryPassword: RecoveryPassword) {
     return this.authService.recoveryPassword(recoveryPassword);
   }
-
-
-
 
   // Endpoint de microservicio (no documentado por Swagger)
   @MessagePattern({ cmd: 'login' })
@@ -202,6 +233,4 @@ export class AuthController {
       },
     };
   }
-
-  
 }
