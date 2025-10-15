@@ -75,7 +75,7 @@ async login(
   
   const result = await this.authService.login(login);
 
-  if (redirectUri) {
+  if (redirectUri && redirectUri !== null) {
     // Validar redirectUri según whitelist si es necesario
     const url = new URL(redirectUri);
     url.searchParams.append('access_token', result.meta.token);
