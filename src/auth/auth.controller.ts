@@ -22,6 +22,7 @@ import {
 import { UserPayload } from 'src/core/interfaces/user-payload.interface';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtTCPStrategy } from 'src/core/strategies/jwtTCP.strategy';
+import { RealIP } from 'nestjs-real-ip';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -65,28 +66,29 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
   @ApiBody({ type: Login })
-  @Post('login')
-@Post('login')
-async login(
-  @Body() login: Login,
-  @Query('redirectUri') redirectUri: string,
-  @Res() res: express.Response,
-) {
-  
-  const result = await this.authService.login(login);
+  async login(
+    @Body() login: Login,
+    @Query('redirectUri') redirectUri: string,
+    @Res() res: express.Response,
+    @RealIP() ip: string,
+  ) {
+    const result = await this.authService.login(login, ip);
 
-  if (redirectUri && redirectUri !== 'null') {
-    // Validar redirectUri según whitelist si es necesario
-    const url = new URL(redirectUri);
-    url.searchParams.append('access_token', result.meta.token);
+    if (redirectUri && redirectUri !== 'null') {
+      // Validar redirectUri según whitelist si es necesario
+      const url = new URL(redirectUri);
+      url.searchParams.append('access_token', result.meta.token);
 
-    res.json({ url: url.toString(), message: 'Login successful', statusCode: 200 }); // Aquí no se retorna nada
-    return; // Termina ejecución aquí
+      res.json({
+        url: url.toString(),
+        message: 'Login successful',
+        statusCode: 200,
+      }); // Aquí no se retorna nada
+      return; // Termina ejecución aquí
+    }
+
+    return res.json(result); // En resto de casos si retorna json
   }
-
-  return res.json(result); // En resto de casos si retorna json
-}
-
 
   @Post('change-password')
   @ApiOperation({ summary: 'Cambiar contraseña' })
@@ -217,9 +219,9 @@ async login(
 
   // Endpoint de microservicio (no documentado por Swagger)
   @MessagePattern({ cmd: 'login' })
-  msLogin(@Payload() login: Login) {
-    return this.authService.login(login);
-  }
+  /* msLogin(@Payload() login: Login, @RealIP() ip: string) {
+    return this.authService.login(login, ip); 
+  } */
 
   @MessagePattern({ cmd: 'validateUser' })
   async msValidateUser(@Payload() token: string) {

@@ -12,6 +12,8 @@ import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
 export class UsersService {
+
+  url = 'https//app.bponet.com.co';
   constructor(
     @InjectModel('User') private readonly userModel: Model<User>,
     private readonly mailService: MailService,
@@ -34,7 +36,7 @@ export class UsersService {
           platform_name: 'BpoNet',
           username: result.email,
           password: createUserDto.password, // si tienes la contraseña original aquí (revisar seguridad)
-          login_url: 'http://localhost/login', // url de login real de tu app
+          login_url: this.url, // url de login real de tu app
         },
       });
       return {

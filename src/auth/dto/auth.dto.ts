@@ -6,6 +6,21 @@ export class Login {
 
   @ApiProperty({ example: 'password123', description: 'Contraseña del usuario' })
   password: string;
+
+  @ApiProperty({ example: false, description: 'Indica si el usuario desea mantener la sesión iniciada' })
+  meta?: Meta;
+}
+
+
+export interface Meta {
+    os?: string;
+    os_version?: string;
+    browser?: string;
+    browser_version?: string;
+    istable?: boolean;
+    ismovil?: boolean;
+    isbrowser?:boolean;
+    user_agent?: string;
 }
 
 export class Register {

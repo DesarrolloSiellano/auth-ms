@@ -12,17 +12,22 @@ import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from 'src/core/interfaces/jwt-payload.interface';
 import * as generatePassword from 'generate-password';
 import { MailService } from 'src/mail/mail.service';
+import { ConfigService } from '@nestjs/config';
+import { Session } from 'src/sessions/entities/session.entity';
 
 @Injectable()
 export class AuthService {
+  url = 'https://app.bponet.com.co';
   constructor(
     private readonly encryptionService: EncryptionService,
     private readonly jwtService: JwtService,
     @InjectModel('User') private readonly userModel: Model<User>,
+    @InjectModel('Session') private readonly sessionModel: Model<Session>,
     private readonly mailService: MailService,
   ) {}
 
-  async login(login: Login) {
+  async login(login: Login, ip: string = '') {
+    const { meta } = login;
     const userDB = await this.userModel.findOne({ email: login.email }).exec();
 
     if (!userDB) {
@@ -63,6 +68,38 @@ export class AuthService {
 
     const token = this.getJwtToken(payload);
 
+    const session = {
+      user: userDB._id,
+      name: userDB.name + ' ' + userDB.lastName,
+      email: userDB.email,
+      company: userDB.company,
+      ip: ip,
+      user_gent: meta?.user_agent || '',
+      os: meta?.os || '',
+      os_version: meta?.os_version || '',
+      browser: meta?.browser || '',
+      browser_version: meta?.browser_version || '',
+      istable: meta?.istable || false,
+      ismovil: meta?.ismovil || false,
+      isbrowser: meta?.isbrowser || false, // 1 hora
+    };
+
+    const newSession = new this.sessionModel(session);
+    await newSession.save();
+
+    this.mailService.sendEmail({
+      to: login.email,
+      subject: 'Inicio de sesión - BpoNet',
+      template: 'session', // nombre del archivo welcome.hbs
+      context: {
+        name: session.name,
+        platform_name: 'BpoNet',
+        os: meta?.os || '',
+        browser: meta?.browser || '',
+        user_agent: meta?.user_agent || '', // url de login real de tu app
+      },
+    });
+
     return {
       message: 'Login successful',
       statusCode: 200,
@@ -75,7 +112,7 @@ export class AuthService {
     };
   }
 
-  async recoveryPassword(recovery: RecoveryPassword) {    
+  async recoveryPassword(recovery: RecoveryPassword) {
     try {
       const userDB = await this.userModel
         .findOne({ email: recovery.email })
@@ -128,7 +165,7 @@ export class AuthService {
           name: result.name,
           platform_name: 'BpoNet',
           temporary_password: tempPassword, // si tienes la contraseña original aquí (revisar seguridad)
-          login_url: 'http://localhost/login', // url de login real de tu app
+          login_url: this.url, // url de login real de tu app
         },
       });
 
