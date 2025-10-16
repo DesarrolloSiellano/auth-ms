@@ -7,6 +7,7 @@ import { PermissionSchema } from 'src/permissions/entities/permission.entity';
 import { UserSchema } from 'src/users/entities/user.entity';
 import { ModuleSchema } from 'src/modules/entities/module.entity';
 import { CompanySchema } from 'src/companies/entities/company.entity';
+import { SessionSchema } from 'src/sessions/entities/session.entity';
 
 @Global()
 @Module({
@@ -23,6 +24,7 @@ import { CompanySchema } from 'src/companies/entities/company.entity';
       { name: 'Permission', schema: PermissionSchema },
       { name: 'Module', schema: ModuleSchema },
       { name: 'Company', schema: CompanySchema },
+      { name: 'Session', schema: SessionSchema }
     ]),
   ],
   exports: [MongooseModule]
