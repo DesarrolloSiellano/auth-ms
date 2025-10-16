@@ -216,7 +216,7 @@ export class UsersService {
 
   async update(id: string, updateUserDto: UpdateUserDto) {
     try {
-      const { password, ...updateData } = updateUserDto;
+      const { password, company, ...updateData } = updateUserDto;
 
       const updatedUser = await this.userModel
         .findByIdAndUpdate(id, updateData, { new: true })

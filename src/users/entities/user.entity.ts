@@ -1,10 +1,12 @@
 import { Schema, model, Document } from 'mongoose';
+import moment from 'moment';
 
 import * as bcrypt from 'bcrypt';
 
 import { Permission } from 'src/permissions/entities/permission.entity';
 import { Rol } from 'src/roles/entities/role.entity';
 import { Module } from 'src/modules/entities/module.entity';
+import { create } from 'domain';
 
 export interface User extends Document {
   name: string;
@@ -25,6 +27,12 @@ export interface User extends Document {
   modules: Module[];
   roles: Rol[];
   permissions: Permission[];
+  createdDate: string;
+  createdHour: string;
+  updatedDate: string;
+  updatedAtHour: string;
+  idUserModified: string;
+  idUserCreated: string;
 }
 
 export const UserSchema = new Schema({
@@ -116,6 +124,11 @@ export const UserSchema = new Schema({
   isAdmin: { type: Boolean, default: false }, // Assuming Role is a separate entity
   isSuperAdmin: { type: Boolean, default: false }, // Assuming Role is a separate entity
   isNewUser: { type: Boolean, default: true },
+
+  createdDate: { type: Date, default: moment().format('YYYY-MM-DD') },
+  createdHour: { type: String, default: moment().format('HH:mm:ss') },
+  updatedDate: { type: Date, default: moment().format('YYYY-MM-DD') },
+  updatedAtHour: { type: String, default: moment().format('HH:mm:ss') },
   // Assuming Role is a separate entity
 });
 
@@ -128,3 +141,4 @@ UserSchema.pre('save', async function (next) {
 
 
 export const UserModel = model<User>('User', UserSchema);
+
