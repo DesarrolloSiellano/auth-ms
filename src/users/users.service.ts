@@ -185,8 +185,17 @@ export class UsersService {
   }
 
   // Búsqueda simple por ID
-  async findOne(id: string) {
+  async findOne(id: string, ms = false) {
     const user = await this.userModel.findById(id).exec();
+    if (ms && !user) {
+      return {
+        message: `User with ID ${id} not found`,
+        statusCode: 404,
+        status: 'Error',
+        data: null,
+        meta: null,
+      };
+    }
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
