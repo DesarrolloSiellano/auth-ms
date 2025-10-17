@@ -29,11 +29,12 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @ApiTags('users')
 @ApiBearerAuth()
 @Controller('users')
-@UseGuards(AuthGuard('jwt'))
+
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
+  @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Crear un usuario nuevo' })
   @ApiBody({ type: CreateUserDto })
   @ApiResponse({
@@ -60,6 +61,7 @@ export class UsersController {
   }
 
   @Get()
+  @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Obtener todos los usuarios' })
   @ApiResponse({
     status: 200,
@@ -81,6 +83,7 @@ export class UsersController {
   }
 
   @Get('findByPage')
+  @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Obtener Usuario por página' })
   @ApiResponse({
     status: 200,
@@ -120,6 +123,7 @@ export class UsersController {
 
 
   @Get(':id')
+  @UseGuards(AuthGuard('jwt'))
   @UseGuards(ValidateObjectIdGuard)
   @ApiOperation({ summary: 'Obtener un usuario por ID' })
   @ApiParam({ name: 'id', description: 'ID del usuario' })
@@ -144,6 +148,7 @@ export class UsersController {
   }
 
   @Get('findByDate')
+  @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Obtener usuarios filtrados por rango de fecha' })
   @ApiQuery({
     name: 'startDate',
@@ -184,6 +189,7 @@ export class UsersController {
   }
 
   @Put(':id')
+  @UseGuards(AuthGuard('jwt'))
   @UseGuards(ValidateObjectIdGuard)
   @ApiOperation({ summary: 'Actualizar un usuario por ID' })
   @ApiParam({ name: 'id', description: 'ID del usuario a actualizar' })
@@ -213,6 +219,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @UseGuards(AuthGuard('jwt'))
   @UseGuards(ValidateObjectIdGuard)
   @ApiOperation({ summary: 'Eliminar un usuario por ID' })
   @ApiParam({ name: 'id', description: 'ID del usuario a eliminar' })
@@ -244,7 +251,7 @@ export class UsersController {
 
   @MessagePattern({ cmd: 'createUser' })
   msCreate(@Payload() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+    return this.usersService.create(createUserDto, true);
   }
 
   @MessagePattern({ cmd: 'findAllUsers' })
@@ -459,6 +466,7 @@ Ejemplos de uso:
           command: 'removeUser',
           description: 'Elimina un usuario. Payload: id:string.',
           payloadExample: { id: 'id-usuario' },
+          
         },
       ],
     };
