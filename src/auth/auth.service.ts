@@ -12,7 +12,6 @@ import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from 'src/core/interfaces/jwt-payload.interface';
 import * as generatePassword from 'generate-password';
 import { MailService } from 'src/mail/mail.service';
-import { ConfigService } from '@nestjs/config';
 import { Session } from 'src/sessions/entities/session.entity';
 
 @Injectable()

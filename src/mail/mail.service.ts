@@ -21,7 +21,7 @@ export class MailService {
       subject: options.subject,
       template: options.template, // nombre de la plantilla .hbs sin extensión
       context: options.context || {},
-      from: this.configService.get<string>('EMAIL_USERNAME'),
+      from: `"No Reply" <${this.configService.get<string>('EMAIL_USERNAME')}>`,
       headers: {
         'X-Priority': '3',
         Importance: 'normal',

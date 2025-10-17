@@ -12,22 +12,30 @@ import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
 export class UsersService {
-
   url = 'https//app.bponet.com.co';
   constructor(
     @InjectModel('User') private readonly userModel: Model<User>,
     private readonly mailService: MailService,
   ) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto, ms: boolean = false) {
     try {
       const newUser = new this.userModel(createUserDto);
       const result = await newUser.save();
+      if (ms && !result) {
+        return {
+          message: 'User not created',
+          statusCode: 500,
+          status: 'Error',
+          data: null,
+          meta: null,
+        };
+      }
       if (!result) {
         throw new NotFoundException('User not created');
       }
 
-      const info = await this.mailService.sendEmail({
+      this.mailService.sendEmail({
         to: result.email,
         subject: 'Bienvenido a BpoNet',
         template: 'welcome', // nombre del archivo welcome.hbs
@@ -39,6 +47,7 @@ export class UsersService {
           login_url: this.url, // url de login real de tu app
         },
       });
+
       return {
         message: 'User created successfully',
         statusCode: 201,
@@ -48,10 +57,29 @@ export class UsersService {
           totalData: 1,
           createdAt: new Date().toISOString(),
           id: result._id,
-          info,
         },
       };
     } catch (error) {
+      if (ms) {
+        if (error.code === 11000) {
+          return {
+            message:
+              'Duplicate key error: User already exists ' +
+              JSON.stringify(error.keyValue),
+            statusCode: 400,
+            status: 'Error',
+            data: null,
+            meta: null,
+          };
+        }
+        return {
+          message: 'Error creating user: ' + error.message,
+          statusCode: 500,
+          status: 'Error',
+          data: null,
+          meta: null,
+        };
+      }
       if (error.code === 11000) {
         throw new BadRequestException(
           'Duplicate key error: User already exists ' +
