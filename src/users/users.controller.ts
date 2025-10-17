@@ -265,8 +265,8 @@ export class UsersController {
   }
 
   @MessagePattern({ cmd: 'findUserById' })
-  msFindById(@Payload() id: string) {
-    return this.usersService.findOne(id);
+  msFindById(@Payload() id: string, ) {
+    return this.usersService.findOne(id, true);
   }
 
   @MessagePattern({ cmd: 'findUsersByDate' })

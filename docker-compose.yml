@@ -10,6 +10,7 @@ services:
     container_name: nest_app_auth-ms
     ports:
       - "3010:3010"
+      - "3011:3011"
     env_file:
       - .env
     networks:
