@@ -235,4 +235,11 @@ export class AuthController {
       },
     };
   }
+
+
+  @MessagePattern({ cmd: 'changePassword' })
+  msRecoveryPassword(@Payload() changePassword: ChangePassword) {
+    return this.authService.changePassword(changePassword);
+  }
 }
+ 
