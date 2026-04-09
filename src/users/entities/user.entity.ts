@@ -6,7 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { Permission } from 'src/permissions/entities/permission.entity';
 import { Rol } from 'src/roles/entities/role.entity';
 import { Module } from 'src/modules/entities/module.entity';
-import { create } from 'domain';
+
 
 export interface User extends Document {
   name: string;
@@ -64,15 +64,13 @@ export const UserSchema = new Schema({
   },
   roles: [
     {
-      _id: { type: Schema.Types.ObjectId, ref: 'Rol' },
-      name: { type: String, default: '' },
+      name: { type: String, default: '', ref: 'Rol' },
       codeRol: { type: String, default: '' },
       description: { type: String, default: '' },
       isActive: { type: Boolean, default: true },
       isInheritPermissions: { type: Boolean, default: false },
       permissions: [
         {
-          _id: { type: Schema.Types.ObjectId, ref: 'Permission' },
           name: { type: String, default: '' },
           description: { type: String, default: '' },
           action: { type: String, default: true },
@@ -83,7 +81,6 @@ export const UserSchema = new Schema({
   ],
   permissions: [
     {
-      _id: { type: Schema.Types.ObjectId, ref: 'Permission' },
       name: { type: String, default: '' },
       description: { type: String, default: '' },
       action: { type: String, default: true },
@@ -92,7 +89,6 @@ export const UserSchema = new Schema({
   ],
   modules: [
     {
-      _id: { type: Schema.Types.ObjectId, ref: 'Module' },
       name: { type: String, default: '' },
       description: { type: String, default: '' },
       isActive: { type: Boolean, default: true },
@@ -106,7 +102,6 @@ export const UserSchema = new Schema({
           isActive: { type: Boolean, default: true },
           children: [
             {
-              
               name: { type: String, default: '' },
               path: { type: String, default: '' },
               icon: { type: String, default: '' },

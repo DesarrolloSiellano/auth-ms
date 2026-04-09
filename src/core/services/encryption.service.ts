@@ -11,7 +11,7 @@ export class EncryptionService {
    * @returns Contraseña encriptada (hash)
    */
   async hashPassword(plainPassword: string): Promise<string> {
-    const salt = await bcrypt.genSalt(this.saltRounds);  
+    const salt = await bcrypt.genSalt(this.saltRounds); 
     return bcrypt.hash(plainPassword, salt);
   }
 
@@ -21,7 +21,7 @@ export class EncryptionService {
    * @param hashedPassword Contraseña encriptada almacenada
    * @returns true si coinciden, false si no
    */
-  async verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
+  async verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {    
     return bcrypt.compare(plainPassword, hashedPassword);
   }
 }

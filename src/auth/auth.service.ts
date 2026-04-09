@@ -136,8 +136,7 @@ export class AuthService {
       });
 
       // Encriptar la contraseña temporal
-      const hashedPassword =
-        await this.encryptionService.hashPassword(tempPassword);
+      const hashedPassword = await this.encryptionService.hashPassword(tempPassword);      
 
       // Actualizar la contraseña en la base de datos
       const result = await this.userModel.findByIdAndUpdate(userDB._id, {
