@@ -16,11 +16,15 @@ export class UsersService {
   constructor(
     @InjectModel('User') private readonly userModel: Model<User>,
     private readonly mailService: MailService,
-  ) {}
+  ) { }
 
   async create(createUserDto: CreateUserDto, ms: boolean = false) {
     try {
-      const newUser = new this.userModel(createUserDto);
+
+      const userData = createUserDto._id
+        ? { ...createUserDto, _id: createUserDto._id }
+        : { ...createUserDto };
+      const newUser = new this.userModel(userData);
       const result = await newUser.save();
       if (ms && !result) {
         return {
@@ -83,7 +87,7 @@ export class UsersService {
       if (error.code === 11000) {
         throw new BadRequestException(
           'Duplicate key error: User already exists ' +
-            JSON.stringify(error.keyValue),
+          JSON.stringify(error.keyValue),
         );
       }
       throw new BadRequestException('Error creating user: ' + error.message);
@@ -279,7 +283,7 @@ export class UsersService {
       if (error.code === 11000) {
         throw new BadRequestException(
           'Duplicate key error: User already exists ' +
-            JSON.stringify(error.keyValue),
+          JSON.stringify(error.keyValue),
         );
       }
       throw new BadRequestException('Error creating user: ' + error.message);
