@@ -2,7 +2,10 @@ import {
   Injectable,
   ForbiddenException,
   BadRequestException,
+  NotFoundException,
+  InternalServerErrorException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Login, ChangePassword, RecoveryPassword } from './dto/auth.dto';
 import { EncryptionService } from 'src/core/services/encryption.service';
 import { InjectModel } from '@nestjs/mongoose';
@@ -13,6 +16,8 @@ import { JwtPayload } from 'src/core/interfaces/jwt-payload.interface';
 import * as generatePassword from 'generate-password';
 import { MailService } from 'src/mail/mail.service';
 import { Session } from 'src/sessions/entities/session.entity';
+import * as crypto from 'crypto';
+import { SetPasswordWithToken } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +28,7 @@ export class AuthService {
     @InjectModel('User') private readonly userModel: Model<User>,
     @InjectModel('Session') private readonly sessionModel: Model<Session>,
     private readonly mailService: MailService,
+    private readonly configService: ConfigService,
   ) {}
 
   async login(login: Login, ip: string = '') {
@@ -65,7 +71,17 @@ export class AuthService {
       permissions: userDB.permissions,
     };
 
-    const token = this.getJwtToken(payload);
+    const accessToken = this.getJwtToken(
+      payload,
+      this.configService.get<string>('JWT_SECRET'),
+      this.configService.get<string>('JWT_ACCESS_EXPIRATION', '1h'),
+    );
+
+    const refreshToken = this.getJwtToken(
+      { _id: userDB._id }, // Refresh token redundant payload for security
+      this.configService.get<string>('JWT_REFRESH_SECRET'),
+      this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d'),
+    );
 
     const session = {
       user: userDB._id,
@@ -80,7 +96,8 @@ export class AuthService {
       browser_version: meta?.browser_version || '',
       istable: meta?.istable || false,
       ismovil: meta?.ismovil || false,
-      isbrowser: meta?.isbrowser || false, // 1 hora
+      isbrowser: meta?.isbrowser || false,
+      refreshToken, // Store the refresh token
     };
 
     const newSession = new this.sessionModel(session);
@@ -89,26 +106,79 @@ export class AuthService {
     this.mailService.sendEmail({
       to: login.email,
       subject: 'Inicio de sesión - BpoNet',
-      template: 'session', // nombre del archivo welcome.hbs
+      template: 'session',
       context: {
         name: session.name,
         platform_name: 'BpoNet',
         os: meta?.os || '',
         browser: meta?.browser || '',
-        user_agent: meta?.user_agent || '', // url de login real de tu app
+        user_agent: meta?.user_agent || '',
       },
     });
 
     return {
       message: 'Login successful',
-      statusCode: 200,
-      status: 'Success',
       meta: {
         payload,
         totalData: 1,
-        token,
+        accessToken,
+        refreshToken,
       },
     };
+  }
+
+  async refreshAccessToken(refreshToken: string) {
+    try {
+      // 1. Verify Refresh Token
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      });
+
+      // 2. Find Session and User
+      const session = await this.sessionModel
+        .findOne({ refreshToken, isActive: true })
+        .exec();
+
+      if (!session) {
+        throw new ForbiddenException('Invalid or expired refresh token');
+      }
+
+      const user = await this.userModel.findById(session.user).exec();
+      if (!user || !user.isActived) {
+        throw new ForbiddenException('User is inactive or no longer exists');
+      }
+
+      // 3. Generate New Access Token
+      const newPayload = {
+        _id: user._id,
+        name: user.name,
+        lastName: user.lastName,
+        email: user.email,
+        username: user.username,
+        date_joined: user.created,
+        isActived: user.isActived,
+        isAdmin: user.isAdmin,
+        isSuperAdmin: user.isSuperAdmin,
+        isNewUser: user.isNewUser,
+        company: user.company,
+        modules: user.modules,
+        roles: user.roles,
+        permissions: user.permissions,
+      };
+
+      const accessToken = this.getJwtToken(
+        newPayload,
+        this.configService.get<string>('JWT_SECRET'),
+        this.configService.get<string>('JWT_ACCESS_EXPIRATION', '1h'),
+      );
+
+      return {
+        accessToken,
+        payload: newPayload,
+      };
+    } catch (error) {
+      throw new ForbiddenException('Invalid refresh token');
+    }
   }
 
   async recoveryPassword(recovery: RecoveryPassword) {
@@ -118,12 +188,7 @@ export class AuthService {
         .exec();
 
       if (!userDB) {
-        return {
-          message: 'Usuario no encontrado',
-          statusCode: 404,
-          status: 'Error',
-          meta: { totalData: 0 },
-        };
+        throw new NotFoundException('Usuario no encontrado');
       }
 
       // Generar contraseña temporal segura
@@ -146,12 +211,7 @@ export class AuthService {
       });
 
       if (!result) {
-        return {
-          message: 'Error al actualizar la contraseña',
-          statusCode: 500,
-          status: 'Error',
-          meta: { totalData: 0 },
-        };
+        throw new InternalServerErrorException('Error al actualizar la contraseña');
       }
 
       // Enviar correo al usuario con la contraseña temporal
@@ -169,8 +229,6 @@ export class AuthService {
 
       return {
         message: 'Contraseña temporal enviada por correo',
-        statusCode: 200,
-        status: 'Success',
         meta: { totalData: 1, info },
       };
     } catch (error) {
@@ -185,14 +243,7 @@ export class AuthService {
         .exec();
 
       if (!userDB) {
-        return {
-          message: 'Usuario no encontrado',
-          statusCode: 404,
-          status: 'Error',
-          meta: {
-            totalData: 0,
-          },
-        };
+        throw new NotFoundException('Usuario no encontrado');
       }
 
       const isPasswordValid = await this.encryptionService.verifyPassword(
@@ -201,14 +252,7 @@ export class AuthService {
       );
 
       if (!isPasswordValid) {
-        return {
-          message: 'La contraseña actual es incorrecta',
-          statusCode: 400,
-          status: 'Error',
-          meta: {
-            totalData: 0,
-          },
-        };
+        throw new BadRequestException('La contraseña actual es incorrecta');
       }
       const hashedPassword = await this.encryptionService.hashPassword(
         changePassword.newPassword,
@@ -225,8 +269,6 @@ export class AuthService {
 
       return {
         message: 'Contraseña cambiada correctamente',
-        statusCode: 201,
-        status: 'Success',
         data: result?.name + ' ' + result?.lastName,
         meta: {
           totalData: 1,
@@ -237,8 +279,40 @@ export class AuthService {
     }
   }
 
-  private getJwtToken(payload: JwtPayload) {
-    const token = this.jwtService.sign(payload);
-    return token;
+  async setPasswordWithToken(setPasswordDto: SetPasswordWithToken) {
+    const { token, password } = setPasswordDto;
+
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    const user = await this.userModel.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Token inválido o expirado.');
+    }
+
+    // El pre-save de User se encargará de hashear la contraseña
+    user.password = password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.isNewUser = false; // El usuario ya estableció su pass por primera vez
+
+    await user.save();
+
+    return {
+      message: 'Contraseña establecida exitosamente. Ya puedes iniciar sesión.',
+    };
+  }
+
+  private getJwtToken(payload: any, secret?: string, expiresIn?: string) {
+    return this.jwtService.sign(payload, {
+      secret: secret || this.configService.get<string>('JWT_SECRET'),
+      expiresIn: expiresIn || this.configService.get<string>('JWT_EXPIRATION', '30d'),
+    });
   }
 }

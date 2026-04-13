@@ -53,3 +53,16 @@ export class RecoveryPassword {
   @ApiProperty({ example: 'usuario@example.com', description: 'Correo electrónico para recuperación de contraseña' })
   email: string;
 }
+
+export class SetPasswordWithToken {
+  @ApiProperty({ example: 'abcdef123456...', description: 'Token de activación enviado por correo' })
+  token: string;
+
+  @ApiProperty({ example: 'newPassword123!', description: 'Nueva contraseña a establecer' })
+  password: string;
+}
+
+export class RefreshToken {
+  @ApiProperty({ example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...', description: 'Token de refresco' })
+  refreshToken: string;
+}

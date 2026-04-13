@@ -22,8 +22,8 @@ export interface User extends Document {
   isNewUser: boolean;
   isSuperAdmin: boolean;
   company: string;
-  passwordResetToken: string;
-  passwordResetExpires: Date;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
   modules: Module[];
   roles: Rol[];
   permissions: Permission[];
@@ -112,13 +112,16 @@ export const UserSchema = new Schema({
       ],
     },
   ],
-  company: { type: String },
+  company: { type: String, index: true },
   created: { type: Date, default: Date.now },
   modified: { type: Date, default: Date.now },
   isActived: { type: Boolean, default: true },
   isAdmin: { type: Boolean, default: false }, // Assuming Role is a separate entity
   isSuperAdmin: { type: Boolean, default: false }, // Assuming Role is a separate entity
   isNewUser: { type: Boolean, default: true },
+
+  passwordResetToken: { type: String, required: false },
+  passwordResetExpires: { type: Date, required: false },
 
   createdDate: { type: Date, default: moment().format('YYYY-MM-DD') },
   createdHour: { type: String, default: moment().format('HH:mm:ss') },

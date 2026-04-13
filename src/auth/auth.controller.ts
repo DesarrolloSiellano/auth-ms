@@ -8,10 +8,11 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import express from 'express';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { AuthService } from './auth.service';
-import { ChangePassword, Login, RecoveryPassword } from './dto/auth.dto';
+import { ChangePassword, Login, RecoveryPassword, SetPasswordWithToken, RefreshToken } from './dto/auth.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -26,13 +27,17 @@ import { RealIP } from 'nestjs-real-ip';
 
 @ApiTags('auth')
 @Controller('auth')
+@UseGuards(ThrottlerGuard)
 export class AuthController {
+  private readonly whitelist = ['app.bponet.com.co', 'localhost'];
+
   constructor(
     private readonly authService: AuthService,
     private jwtTCPStrategy: JwtTCPStrategy,
   ) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Iniciar sesión y obtener token JWT' })
   @ApiResponse({
     status: 200,
@@ -69,25 +74,56 @@ export class AuthController {
   async login(
     @Body() login: Login,
     @Query('redirectUri') redirectUri: string,
-    @Res() res: express.Response,
+    @Res({ passthrough: true }) res: express.Response,
     @RealIP() ip: string,
   ) {
     const result = await this.authService.login(login, ip);
 
     if (redirectUri && redirectUri !== 'null') {
-      // Validar redirectUri según whitelist si es necesario
-      const url = new URL(redirectUri);
-      url.searchParams.append('access_token', result.meta.token);
+      try {
+        const url = new URL(redirectUri);
+        const isAllowed = this.whitelist.some(domain => 
+          url.hostname === domain || url.hostname.endsWith('.' + domain)
+        );
 
-      res.json({
-        url: url.toString(),
-        message: 'Login successful',
-        statusCode: 200,
-      }); // Aquí no se retorna nada
-      return; // Termina ejecución aquí
+        if (isAllowed) {
+          url.searchParams.append('access_token', result.meta.accessToken);
+          url.searchParams.append('refresh_token', result.meta.refreshToken);
+          return {
+            url: url.toString(),
+            message: 'Login successful',
+          };
+        }
+      } catch (e) {
+        // En caso de que redirectUri no sea una URL válida, ignorar redirección
+      }
     }
 
-    return res.json(result); // En resto de casos si retorna json
+    return result;
+  }
+
+  @Post('recovery-password')
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @ApiOperation({ summary: 'Recuperar contraseña' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cambio de contraseña exitoso',
+    schema: {
+      example: {
+        message: 'recovery password successful',
+        statusCode: 200,
+        status: 'Success',
+        data: 'Email enviado',
+        meta: {
+          totalData: 1,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Error al recuperar contraseña' })
+  @ApiBody({ type: RecoveryPassword })
+  recoveryPassword(@Body() recoveryPassword: RecoveryPassword) {
+    return this.authService.recoveryPassword(recoveryPassword);
   }
 
   @Post('change-password')
@@ -193,28 +229,25 @@ export class AuthController {
     };
   }
 
-  @Post('recovery-password')
-  @ApiOperation({ summary: 'Recuperar contraseña' })
+  @Post('set-password-token')
+  @ApiOperation({ summary: 'Establecer contraseña usando un token de activación' })
   @ApiResponse({
     status: 200,
-    description: 'Recuperación de contraseña exitoso',
-    schema: {
-      example: {
-        message: 'recovery password successful',
-        statusCode: 200,
-        status: 'Success',
-        data: 'Nombre de usuario',
-        meta: {
-          totalData: 1,
-        },
-      },
-    },
+    description: 'Contraseña establecida exitosamente',
   })
-  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  @ApiResponse({ status: 500, description: 'Error al actualizar contraseña' })
-  @ApiBody({ type: RecoveryPassword })
-  recoveryPassword(@Body() recoveryPassword: RecoveryPassword) {
-    return this.authService.recoveryPassword(recoveryPassword);
+  @ApiResponse({ status: 400, description: 'Token inválido o expirado' })
+  @ApiBody({ type: SetPasswordWithToken })
+  setPasswordWithToken(@Body() setPasswordDto: SetPasswordWithToken) {
+    return this.authService.setPasswordWithToken(setPasswordDto);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Post('refresh')
+  @ApiOperation({ summary: 'Refrescar token de acceso' })
+  @ApiResponse({ status: 200, description: 'Token refrescado correctamente' })
+  @ApiResponse({ status: 403, description: 'Token de refresco inválido o expirado' })
+  async refresh(@Body() refreshTokenDto: RefreshToken) {
+    return this.authService.refreshAccessToken(refreshTokenDto.refreshToken);
   }
 
   // Endpoint de microservicio (no documentado por Swagger)
