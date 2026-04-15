@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -17,35 +16,23 @@ export class CompaniesService {
   ) {}
 
   async create(createCompanyDto: CreateCompanyDto) {
-    try {
-      const company = new this.companyModel(createCompanyDto);
-      const result = await company.save();
+    const company = new this.companyModel(createCompanyDto);
+    const result = await company.save();
 
-      if (!result) {
-        throw new NotFoundException('Company not created');
-      }
-
-      return {
-        message: 'Company created successfully',
-        statusCode: 201,
-        status: 'Success',
-        data: result,
-        meta: {
-          totalData: 1,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          id: result._id,
-        },
-      };
-    } catch (error) {
-      if (error.code === 11000) {
-        throw new BadRequestException(
-          'Duplicate key error: Company already exists ' +
-            JSON.stringify(error.keyValue),
-        );
-      }
-      throw new BadRequestException('Error creating company: ' + error.message);
+    if (!result) {
+      throw new NotFoundException('Company not created');
     }
+
+    return {
+      message: 'Company created successfully',
+      data: result,
+      meta: {
+        totalData: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        id: result._id,
+      },
+    };
   }
 
   async findAll() {
@@ -53,15 +40,7 @@ export class CompaniesService {
     if (!companies || companies.length === 0) {
       throw new NotFoundException('No companies found');
     }
-    return {
-      message: 'Find all companies',
-      statusCode: 200,
-      status: 'Success',
-      data: companies,
-      meta: {
-        totalData: companies.length,
-      },
-    };
+    return companies;
   }
 
   async findByPage(from?: number, limit?: number, global?: any, filters?: any) {
@@ -91,8 +70,6 @@ export class CompaniesService {
     const totalData = await this.companyModel.countDocuments(query);
 
     return {
-      statusCode: 200,
-      status: 'Success',
       message: 'Companies found',
       data: docs,
       meta: {
@@ -102,21 +79,18 @@ export class CompaniesService {
   }
 
   async findByAutoComplete(word?: string) {
-    try {
-      if (!word) {
-        return {
-          message: 'No search word provided',
-          statusCode: 200,
-          status: 'Success',
-          data: [],
-          meta: {
-            totalData: 0,
-          },
-        };
-      }
+    if (!word) {
+      return {
+        message: 'No search word provided',
+        data: [],
+        meta: {
+          totalData: 0,
+        },
+      };
+    }
 
-      const regex = new RegExp(word, 'i'); // Búsqueda insensible a mayúsculas/minúsculas
-      const result = await this.companyModel
+    const regex = new RegExp(word, 'i'); // Búsqueda insensible a mayúsculas/minúsculas
+    const result = await this.companyModel
       .find({
         isActive: true,
         $or: [
@@ -133,22 +107,13 @@ export class CompaniesService {
       .sort({ _id: -1 }) // Similar al ejemplo orden descendente
       .exec();
 
-      
-
-      return {
-        message: 'Companies found by autocomplete',
-        statusCode: 200,
-        status: 'Success',
-        data: result,
-        meta: {
-          totalData: result.length,
-        },
-      };
-    } catch (error) {
-      throw new BadRequestException(
-        'Error in autocomplete search: ' + error.message,
-      );
-    }
+    return {
+      message: 'Companies found by autocomplete',
+      data: result,
+      meta: {
+        totalData: result.length,
+      },
+    };
   }
 
   async findOne(id: string) {
@@ -156,47 +121,27 @@ export class CompaniesService {
     if (!company) {
       throw new NotFoundException(`Company with ID ${id} not found`);
     }
-    return {
-      message: 'Find one company',
-      statusCode: 200,
-      status: 'Success',
-      data: company,
-      meta: {
-        totalData: 1,
-      },
-    };
+    return company;
   }
 
   async update(id: string, updateCompanyDto: UpdateCompanyDto) {
-    try {
-      const updatedCompany = await this.companyModel
-        .findByIdAndUpdate(id, updateCompanyDto, { new: true })
-        .exec();
+    const updatedCompany = await this.companyModel
+      .findByIdAndUpdate(id, updateCompanyDto, { new: true })
+      .exec();
 
-      if (!updatedCompany) {
-        throw new NotFoundException(`Company with ID ${id} not found`);
-      }
-
-      return {
-        message: 'Company updated successfully',
-        statusCode: 200,
-        status: 'Success',
-        data: updatedCompany,
-        meta: {
-          totalData: 1,
-          updatedAt: new Date().toISOString(),
-          id: updatedCompany._id,
-        },
-      };
-    } catch (error) {
-      if (error.code === 11000) {
-        throw new BadRequestException(
-          'Duplicate key error: Company already exists ' +
-            JSON.stringify(error.keyValue),
-        );
-      }
-      throw new BadRequestException('Error updating company: ' + error.message);
+    if (!updatedCompany) {
+      throw new NotFoundException(`Company with ID ${id} not found`);
     }
+
+    return {
+      message: 'Company updated successfully',
+      data: updatedCompany,
+      meta: {
+        totalData: 1,
+        updatedAt: new Date().toISOString(),
+        id: updatedCompany._id,
+      },
+    };
   }
 
   async remove(id: string) {
@@ -204,16 +149,6 @@ export class CompaniesService {
     if (!deletedCompany) {
       throw new NotFoundException(`Company with ID ${id} not found`);
     }
-    return {
-      message: 'Company deleted successfully',
-      statusCode: 200,
-      status: 'Success',
-      data: deletedCompany,
-      meta: {
-        totalData: 1,
-        deletedAt: new Date().toISOString(),
-        id: deletedCompany._id,
-      },
-    };
+    return deletedCompany;
   }
 }

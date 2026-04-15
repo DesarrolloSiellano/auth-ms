@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,6 +8,7 @@ import { User } from './entities/user.entity';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { MailService } from 'src/mail/mail.service';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class UsersService {
@@ -18,80 +18,48 @@ export class UsersService {
     private readonly mailService: MailService,
   ) { }
 
-  async create(createUserDto: CreateUserDto, ms: boolean = false) {
-    try {
+  async create(createUserDto: CreateUserDto) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
 
-      const userData = createUserDto._id
-        ? { ...createUserDto, _id: createUserDto._id }
-        : { ...createUserDto };
-      const newUser = new this.userModel(userData);
-      const result = await newUser.save();
-      if (ms && !result) {
-        return {
-          message: 'User not created',
-          statusCode: 500,
-          status: 'Error',
-          data: null,
-          meta: null,
-        };
-      }
-      if (!result) {
-        throw new NotFoundException('User not created');
-      }
+    const userData = {
+      ...createUserDto,
+      _id: createUserDto._id, // Si viene de otra app, lo usamos; si no, será undefined y Mongo lo generará
+      password: crypto.randomBytes(16).toString('hex'),
+      passwordResetToken: hashedToken,
+      passwordResetExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    };
 
-      this.mailService.sendEmail({
-        to: result.email,
-        subject: 'Bienvenido a BpoNet',
-        template: 'welcome', // nombre del archivo welcome.hbs
-        context: {
-          name: result.name,
-          platform_name: 'BpoNet',
-          username: result.email,
-          password: createUserDto.password, // si tienes la contraseña original aquí (revisar seguridad)
-          login_url: this.url, // url de login real de tu app
-        },
-      });
+    const newUser = new this.userModel(userData);
+    const result = await newUser.save();
 
-      return {
-        message: 'User created successfully',
-        statusCode: 201,
-        status: 'Success',
-        data: result,
-        meta: {
-          totalData: 1,
-          createdAt: new Date().toISOString(),
-          id: result._id,
-        },
-      };
-    } catch (error) {
-      if (ms) {
-        if (error.code === 11000) {
-          return {
-            message:
-              'Duplicate key error: User already exists ' +
-              JSON.stringify(error.keyValue),
-            statusCode: 400,
-            status: 'Error',
-            data: null,
-            meta: null,
-          };
-        }
-        return {
-          message: 'Error creating user: ' + error.message,
-          statusCode: 500,
-          status: 'Error',
-          data: null,
-          meta: null,
-        };
-      }
-      if (error.code === 11000) {
-        throw new BadRequestException(
-          'Duplicate key error: User already exists ' +
-          JSON.stringify(error.keyValue),
-        );
-      }
-      throw new BadRequestException('Error creating user: ' + error.message);
-    }
+    const setPasswordUrl = `${this.url}/set-password?token=${token}`;
+
+    this.mailService.sendEmail({
+      to: result.email,
+      subject: 'Bienvenido a BpoNet - Activa tu cuenta',
+      template: 'welcome',
+      context: {
+        name: result.name,
+        platform_name: 'BpoNet',
+        username: result.email,
+        setPasswordUrl: setPasswordUrl,
+        login_url: this.url,
+      },
+    });
+
+    return {
+      data: result,
+      message: 'User created successfully. Activation email sent.',
+      meta: {
+        totalData: 1,
+        createdAt: new Date().toISOString(),
+        id: result._id,
+      },
+    };
   }
 
   async findAll() {
@@ -99,15 +67,7 @@ export class UsersService {
     if (!users || users.length === 0) {
       throw new NotFoundException('No users found');
     }
-    return {
-      message: 'Users retrieved successfully',
-      statusCode: 200,
-      status: 'Success',
-      data: users,
-      meta: {
-        totalData: users.length,
-      },
-    };
+    return users;
   }
 
   async findByPage(
@@ -118,16 +78,14 @@ export class UsersService {
     filters?: any,
   ) {
     const { isSuperAdmin } = user;
-
     const query: any = {};
 
     if (!isSuperAdmin) {
       query.company = user.company;
     }
-    // Búsqueda global en varios campos
+
     if (global) {
       const regex = new RegExp(global, 'i');
-      // Si es superadmin, busca global en todos los campos incluyendo compañía
       if (isSuperAdmin) {
         query.$or = [
           { name: regex },
@@ -138,7 +96,6 @@ export class UsersService {
           { company: regex },
         ];
       } else {
-        // No superadmin: búsqueda global menos en compañía (porque ya filtra con company fija)
         query.$or = [
           { name: regex },
           { lastName: regex },
@@ -150,16 +107,13 @@ export class UsersService {
     }
     const skipNumber = from && from >= 0 ? from : 0;
     const limitNumber = limit && limit > 0 ? limit : 100;
-    const docs = await this.userModel
-      .find(query)
-      .skip(skipNumber)
-      .limit(limitNumber);
-    const totalData = await this.userModel.countDocuments(query);
+
+    const [docs, totalData] = await Promise.all([
+      this.userModel.find(query).skip(skipNumber).limit(limitNumber),
+      this.userModel.countDocuments(query),
+    ]);
 
     return {
-      statusCode: 200,
-      status: 'Success',
-      message: 'Modules found',
       data: docs,
       meta: {
         totalData: totalData,
@@ -176,9 +130,6 @@ export class UsersService {
     ]);
 
     return {
-      message: 'Paginated users retrieved successfully',
-      statusCode: 200,
-      status: 'Success',
       data: users,
       meta: {
         totalData,
@@ -189,29 +140,12 @@ export class UsersService {
   }
 
   // Búsqueda simple por ID
-  async findOne(id: string, ms = false) {
+  async findOne(id: string) {
     const user = await this.userModel.findById(id).exec();
-    if (ms && !user) {
-      return {
-        message: `User with ID ${id} not found`,
-        statusCode: 404,
-        status: 'Error',
-        data: null,
-        meta: null,
-      };
-    }
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
-    return {
-      message: 'User retrieved successfully',
-      statusCode: 200,
-      status: 'Success',
-      data: user,
-      meta: {
-        totalData: 1,
-      },
-    };
+    return user;
   }
 
   // Si quieres filtrar por fecha de creación, ajusta el DTO y lógica aquí
@@ -246,8 +180,6 @@ export class UsersService {
 
     return {
       message: 'Users retrieved by date range successfully',
-      statusCode: 200,
-      status: 'Success',
       data: users,
       meta: {
         totalData: users.length,
@@ -258,36 +190,16 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    try {
-      const { password, company, ...updateData } = updateUserDto;
+    const { password, company, ...updateData } = updateUserDto;
 
-      const updatedUser = await this.userModel
-        .findByIdAndUpdate(id, updateData, { new: true })
-        .exec();
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(id, updateData, { new: true })
+      .exec();
 
-      if (!updatedUser) {
-        throw new NotFoundException(`User with ID ${id} not found`);
-      }
-      return {
-        message: 'User updated successfully',
-        statusCode: 200,
-        status: 'Success',
-        data: updatedUser,
-        meta: {
-          totalData: 1,
-          updatedAt: new Date().toISOString(),
-          id: updatedUser._id,
-        },
-      };
-    } catch (error) {
-      if (error.code === 11000) {
-        throw new BadRequestException(
-          'Duplicate key error: User already exists ' +
-          JSON.stringify(error.keyValue),
-        );
-      }
-      throw new BadRequestException('Error creating user: ' + error.message);
+    if (!updatedUser) {
+      throw new NotFoundException(`User with ID ${id} not found`);
     }
+    return updatedUser;
   }
 
   async remove(id: string) {
@@ -295,16 +207,6 @@ export class UsersService {
     if (!deletedUser) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
-    return {
-      message: 'User deleted successfully',
-      statusCode: 200,
-      status: 'Success',
-      data: deletedUser,
-      meta: {
-        totalData: 1,
-        deletedAt: new Date().toISOString(),
-        id: deletedUser._id,
-      },
-    };
+    return deletedUser;
   }
 }

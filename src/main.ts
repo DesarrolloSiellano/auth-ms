@@ -3,29 +3,15 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import * as fsExtra from 'fs-extra';
-import * as path from 'path';
+import { ResponseInterceptor } from './core/interceptors/response.interceptor';
+import { HttpExceptionFilter } from './core/filters/http-exception.filter';
+import { Logger } from 'nestjs-pino';
 
 async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const logger = app.get(Logger);
+  app.useLogger(logger);
 
-  // Antes de crear la app, copia la carpeta de templates si no existe en dist
-  const srcTemplates = path.resolve(process.cwd(), 'src', 'mail', 'templates');
-  const distTemplates = path.resolve(process.cwd(), 'dist', 'mail', 'templates');
-  const exists = await fsExtra.pathExists(distTemplates);
-  if (!exists) {
-    try {
-      await fsExtra.copy(srcTemplates, distTemplates);
-      console.log('Templates copiados desde src/mail/templates a dist/mail/templates');
-    } catch (err) {
-      console.error('Error copiando templates:', err);
-      // Opcional: decidir si abortar arranque o continuar
-    }
-  } else {
-    console.log('Templates ya existen en dist/mail/templates');
-  }
-
-
-  const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
   // Prefijo global para API REST
@@ -38,6 +24,10 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: false,
   });
+
+  // Global Interceptors and Filters
+  app.useGlobalInterceptors(new ResponseInterceptor());
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   // Swagger/OpenAPI Configuración
   const swaggerConfig = new DocumentBuilder()
@@ -85,7 +75,7 @@ Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo m
   await app.startAllMicroservices();
   await app.listen(process.env.PORT ?? 3010);
 
-  console.log(`Servidor REST: ${await app.getUrl()}`);
-  console.log(`Swagger docs: ${await app.getUrl()}/api-docs`);
+  logger.log(`Servidor REST: ${await app.getUrl()}`);
+  logger.log(`Swagger docs: ${await app.getUrl()}/api-docs`);
 }
 bootstrap();

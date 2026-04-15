@@ -11,6 +11,7 @@ export interface Session extends Document {
     created: string;
     modified: string;
     isActive: boolean;
+    refreshToken?: string;
     ip?: string;
     os?: string;
     os_version?: string;
@@ -37,6 +38,7 @@ export const SessionSchema = new Schema({
     created: { type: String, default: moment().format('YYYY-MM-DD HH:mm:ss') },
     modified: { type: String, default: moment().format('YYYY-MM-DD HH:mm:ss') },
     isActive: { type: Boolean, default: true },
+    refreshToken: { type: String, index: true },
     ip: { type: String },
     os: { type: String },
     os_version: { type: String },

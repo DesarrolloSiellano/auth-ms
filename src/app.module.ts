@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
+import * as path from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -16,6 +18,8 @@ import { SessionsModule } from './sessions/sessions.module';
 import { StrategyJwtGlobalModule } from './core/modules/strategyJwtModule.module';
 import { CompaniesModule } from './companies/companies.module';
 import { MailModule } from './mail/mail.module';
+import { LoggerModule } from 'nestjs-pino';
+import { envValidationSchema } from './core/config/env.validation';
 
 
 
@@ -23,8 +27,49 @@ import { MailModule } from './mail/mail.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'], // Hace que ConfigService esté disponible globalmente
+      envFilePath: ['.env.local', '.env'],
+      validationSchema: envValidationSchema,
     }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        timestamp: () => `,"time":"${new Intl.DateTimeFormat('sv-SE', {
+          timeZone: 'America/Bogota',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }).format(new Date()).replace(' ', 'T')}"`,
+        transport: {
+          targets: [
+            {
+              target: 'pino-pretty',
+              options: {
+                colorize: true,
+                singleLine: true,
+              },
+              level: 'info',
+            },
+            {
+              target: 'pino-roll',
+              options: {
+                file: path.join(process.cwd(), 'logs', 'app.log'),
+                frequency: 'daily',
+                mkdir: true,
+              },
+              level: 'info',
+            },
+          ],
+        },
+      },
+    }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 10,
+      },
+    ]),
     StrategyJwtGlobalModule,
     DatabaseModule,
     SetDataInitModule,

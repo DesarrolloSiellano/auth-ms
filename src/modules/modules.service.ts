@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
@@ -20,15 +19,12 @@ export class ModulesService {
     const module = new this.moduleModel(createModuleDto);
     const result = await module.save();
 
-
     if (!result) {
       throw new NotFoundException('Module not created');
     }
 
     return {
       message: 'Module created successfully',
-      statusCode: 201,
-      status: 'Success',
       data: result,
       meta: {
         totalData: 1,
@@ -45,45 +41,22 @@ export class ModulesService {
       throw new NotFoundException('No modules found');
     }
 
-    return {
-      message: 'find all modules',
-      statusCode: 200,
-      status: 'Success',
-      data: modules,
-      meta: {
-        totalData: modules.length,
-      },
-    };
+    return modules;
   }
 
   async findOne(id: string) {
-
-
     const module = await this.moduleModel.findById(id).exec();
     if (!module) {
       throw new NotFoundException(`Module with ID ${id} not found`);
     }
-    return {
-      message: 'find one module',
-      statusCode: 200,
-      status: 'Success',
-      data: module,
-      meta: {
-        totalData: 1,
-      },
-    };
+    return module;
   }
 
   async findByPage(from?: number, limit?: number, global?: any, filters?: any) {
-
     const query: any = {};
-    // Búsqueda global en varios campos
     if (global) {
       query.$or = [
         { name: new RegExp(global, 'i') },
-        //{ action: new RegExp(global, 'i') },
-        //{ isActive: Boolean(global) },
-        // { resource: new RegExp(global, 'i') },
         { description: new RegExp(global, 'i') },
       ];
     }
@@ -96,8 +69,6 @@ export class ModulesService {
     const totalData = await this.moduleModel.countDocuments(query);
 
     return {
-      statusCode: 200,
-      status: 'Success',
       message: 'Modules found',
       data: docs,
       meta: {
@@ -116,8 +87,6 @@ export class ModulesService {
 
     return {
       message: 'Module updated successfully',
-      statusCode: 200,
-      status: 'Success',
       data: updatedModule,
       meta: {
         totalData: 1,
@@ -133,16 +102,6 @@ export class ModulesService {
       throw new NotFoundException(`Module with ID ${id} not found`);
     }
 
-    return {
-      message: 'Module deleted successfully',
-      statusCode: 200,
-      status: 'Success',
-      data: deletedModule,
-      meta: {
-        totalData: 1,
-        deletedAt: new Date().toISOString(),
-        id: deletedModule._id,
-      },
-    };
+    return deletedModule;
   }
 }
