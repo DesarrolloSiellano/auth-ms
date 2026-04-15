@@ -120,9 +120,10 @@ export class AuthService {
       message: 'Login successful',
       meta: {
         payload,
-        totalData: 1,
+        token: accessToken, // Alias para compatibilidad con el front viejo
         accessToken,
         refreshToken,
+        totalData: 1,
       },
     };
   }

@@ -30,19 +30,30 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
       map((result) => {
         // Si el resultado ya tiene el formato esperado (para compatibilidad mientras refactorizamos)
         if (result && result.status && result.statusCode) {
-            return result;
+          return result;
         }
 
-        // Si el resultado viene con data y meta definidos
-        const data = result?.data !== undefined ? result.data : result;
-        const meta = result?.meta !== undefined ? result.meta : { totalData: Array.isArray(data) ? data.length : 1 };
+        // Determinamos mensaje, meta y data
         const message = result?.message || 'Operation successful';
+        
+        // Si el resultado trae 'meta', lo usamos; si no, generamos uno básico
+        const meta = result?.meta !== undefined ? result.meta : { totalData: Array.isArray(result) ? result.length : 1 };
+        
+        // REGLA DE ORO PARA COMPATIBILIDAD: 
+        // Si result.meta existe pero result.data NO, entonces asumimos que el resultado NO debe envolverse en 'data' (formato legacy)
+        // De lo contrario, usamos result.data o el resultado mismo como data.
+        let data = undefined;
+        if (result?.data !== undefined) {
+          data = result.data;
+        } else if (result?.meta === undefined) {
+          data = result;
+        }
 
         return {
           message,
           statusCode,
           status: 'Success',
-          data,
+          ...(data !== undefined && { data }),
           meta,
         };
       }),

@@ -8,8 +8,10 @@ import { User } from 'src/users/entities/user.entity';
 import { PERMISSIONS } from 'src/set-data-init/helpers/permissions.admin';
 import { ROLES } from 'src/set-data-init/helpers/role.admin';
 import { ADMIN_USER } from './helpers/user.admin';
-import Module from 'module';
+import { Module } from 'src/modules/entities/module.entity';
 import { ADMIN_MODULE } from './helpers/modules.admin';
+import { Company } from 'src/companies/entities/company.entity';
+import { ADMIN_COMPANY } from './helpers/companies.admin';
 
 @Injectable()
 export class SetDataInit implements OnApplicationBootstrap {
@@ -21,7 +23,8 @@ export class SetDataInit implements OnApplicationBootstrap {
     private readonly permissionsModel: Model<Permission>,
     @InjectModel('User') private readonly userModel: Model<User>,
     @InjectModel('Module') private readonly moduleModel: Model<Module>,
-  ) {}
+    @InjectModel('Company') private readonly companyModel: Model<Company>,
+  ) { }
 
   async createInitModules() {
     try {
@@ -82,31 +85,44 @@ export class SetDataInit implements OnApplicationBootstrap {
     }
   }
 
- async createAdminUsers() {
-  try {
-    const modules = await this.moduleModel.find().exec();
-
-    
-    const permissions = await this.permissionsModel.find().exec();
-    const roles = await this.rolModel.find().exec();
-    // Prepara subdocumentos para módulos y permisos que serán iguales para todos los admins
-    // Recorrer cada administrador en ADMIN_USER y crear documento en DB con los subdocumentos
-    for (const adminUser of ADMIN_USER) {
-      const admin = new this.userModel({
-        ...adminUser,
-        modules: modules,
-        roles: roles,
-        permissions: permissions,
-      });
-
-      await admin.save();
-      this.logger.log(`Admin user ${adminUser.email || adminUser.username} created successfully.`);
+  async createInitCompanies() {
+    try {
+      await this.companyModel.insertMany(ADMIN_COMPANY, { ordered: false });
+      this.logger.log('Companies initialized successfully');
+    } catch (error) {
+      if (error.code === 11000) {
+        this.logger.warn('Some companies already exist, skipping duplicates');
+      } else {
+        throw error;
+      }
     }
-  } catch (error) {
-    this.logger.error('Error creating admin users', error);
-    throw error;
   }
-}
+
+  async createAdminUsers() {
+    try {
+      const modules = await this.moduleModel.find().exec();
+      const permissions = await this.permissionsModel.find().exec();
+      const roles = await this.rolModel.find().exec();
+      const company = await this.companyModel.findOne({ name: 'BPONET' }).exec();
+
+      // Recorrer cada administrador en ADMIN_USER y crear documento en DB con los subdocumentos
+      for (const adminUser of ADMIN_USER) {
+        const admin = new this.userModel({
+          ...adminUser,
+          modules: modules,
+          roles: roles,
+          permissions: permissions,
+          company: company ? company.name : '',
+        });
+
+        await admin.save();
+        this.logger.log(`Admin user ${adminUser.email || adminUser.username} created successfully.`);
+      }
+    } catch (error) {
+      this.logger.error('Error creating admin users', error);
+      throw error;
+    }
+  }
 
 
   async onApplicationBootstrap() {
@@ -121,6 +137,7 @@ export class SetDataInit implements OnApplicationBootstrap {
         .countDocuments()
         .exec();
       const userCount = await this.userModel.countDocuments().exec();
+      const companyCount = await this.companyModel.countDocuments().exec();
 
       if (moduleCount === 0) {
         this.logger.warn('No modules found, creating an admin module...');
@@ -133,6 +150,10 @@ export class SetDataInit implements OnApplicationBootstrap {
       if (rolCount === 0) {
         this.logger.warn('No roles found, creating an data admin...');
         await this.createInitRoles();
+      }
+      if (companyCount === 0) {
+        this.logger.warn('No companies found, creating initial company...');
+        await this.createInitCompanies();
       }
       if (userCount === 0) {
         this.logger.warn('No users found, creating an admin user...');

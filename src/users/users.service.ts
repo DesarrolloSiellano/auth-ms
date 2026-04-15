@@ -27,9 +27,10 @@ export class UsersService {
 
     const userData = {
       ...createUserDto,
-      password: crypto.randomBytes(16).toString('hex'), // Generamos una pass temporal aleatoria que no se usará
+      _id: createUserDto._id, // Si viene de otra app, lo usamos; si no, será undefined y Mongo lo generará
+      password: crypto.randomBytes(16).toString('hex'),
       passwordResetToken: hashedToken,
-      passwordResetExpires: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 horas
+      passwordResetExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
     };
 
     const newUser = new this.userModel(userData);
