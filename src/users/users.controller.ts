@@ -251,7 +251,7 @@ export class UsersController {
 
   @MessagePattern({ cmd: 'createUser' })
   msCreate(@Payload() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto, true);
+    return this.usersService.create(createUserDto);
   }
 
   @MessagePattern({ cmd: 'findAllUsers' })
@@ -265,8 +265,8 @@ export class UsersController {
   }
 
   @MessagePattern({ cmd: 'findUserById' })
-  msFindById(@Payload() id: string, ) {
-    return this.usersService.findOne(id, true);
+  msFindById(@Payload() id: string) {
+    return this.usersService.findOne(id);
   }
 
   @MessagePattern({ cmd: 'findUsersByDate' })

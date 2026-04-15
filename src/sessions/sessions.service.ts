@@ -5,22 +5,25 @@ import { UpdateSessionDto } from './dto/update-session.dto';
 @Injectable()
 export class SessionsService {
   create(createSessionDto: CreateSessionDto) {
-    return 'This action adds a new session';
+    return {
+      message: 'This action adds a new session',
+      data: createSessionDto,
+    };
   }
 
   findAll() {
-    return `This action returns all sessions`;
+    return [];
   }
 
   findOne(id: number) {
-    return `This action returns a #${id} session`;
+    return { id };
   }
 
   update(id: number, updateSessionDto: UpdateSessionDto) {
-    return `This action updates a #${id} session`;
+    return { id, ...updateSessionDto };
   }
 
   remove(id: number) {
-    return `This action removes a #${id} session`;
+    return { id, deleted: true };
   }
 }
