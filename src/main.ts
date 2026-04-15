@@ -6,8 +6,28 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ResponseInterceptor } from './core/interceptors/response.interceptor';
 import { HttpExceptionFilter } from './core/filters/http-exception.filter';
 import { Logger } from 'nestjs-pino';
+import * as fsExtra from 'fs-extra';
+import * as path from 'path';
 
 async function bootstrap() {
+  // Antes de crear la app, copia la carpeta de templates si no existe en dist
+  const srcTemplates = path.resolve(process.cwd(), 'src', 'mail', 'templates');
+  const distTemplates = path.resolve(process.cwd(), 'dist', 'mail', 'templates');
+  const exists = await fsExtra.pathExists(distTemplates);
+  if (!exists) {
+    try {
+      await fsExtra.copy(srcTemplates, distTemplates);
+      console.log('Templates copiados desde src/mail/templates a dist/mail/templates');
+    } catch (err) {
+      console.error('Error copiando templates:', err);
+      // Opcional: decidir si abortar arranque o continuar
+    }
+  } else {
+    console.log('Templates ya existen en dist/mail/templates');
+  }
+
+
+
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const logger = app.get(Logger);
   app.useLogger(logger);
@@ -31,10 +51,10 @@ async function bootstrap() {
 
   // Swagger/OpenAPI Configuración
   const swaggerConfig = new DocumentBuilder()
-  .setTitle('API Híbrida con REST y Microservicios TCP')
-  .setVersion('1.0')
-  .setDescription(
-    `Esta es una aplicación híbrida desarrollada con NestJS que combina:
+    .setTitle('API Híbrida con REST y Microservicios TCP')
+    .setVersion('1.0')
+    .setDescription(
+      `Esta es una aplicación híbrida desarrollada con NestJS que combina:
 
 - **API REST:**  
   Expone endpoints HTTP documentados con Swagger para operaciones estándar accesibles por clientes externos, navegadores o herramientas REST.
@@ -48,14 +68,14 @@ La documentación Swagger incluye:
 - Documentación especial (a través de endpoints de solo lectura) que describe los patrones y payloads TCP disponibles para microservicios, como referencia para desarrolladores e integradores.
 
 Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo mejor de los APIs REST para consumo público y microservicios TCP para comunicación interna.`
-  )
-  .addBearerAuth({
-    type: 'http',
-    scheme: 'bearer',
-    bearerFormat: 'JWT',
-    description: 'Ingrese el token JWT en formato Bearer',
-  })
-  .build();
+    )
+    .addBearerAuth({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description: 'Ingrese el token JWT en formato Bearer',
+    })
+    .build();
 
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

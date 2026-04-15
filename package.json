@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
+    "postbuild": "cp -r src/mail/templates dist/mail/templates",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -78,6 +79,12 @@
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },
+  "assets": [
+    {
+      "include": "mail/templates/**/*",
+      "watch": true
+    }
+  ],
   "jest": {
     "moduleFileExtensions": [
       "js",
