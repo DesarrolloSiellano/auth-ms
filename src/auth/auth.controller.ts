@@ -36,7 +36,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private jwtTCPStrategy: JwtTCPStrategy,
-  ) {}
+  ) { }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -85,7 +85,7 @@ export class AuthController {
     if (redirectUri && redirectUri !== 'null') {
       try {
         const url = new URL(redirectUri);
-        const isAllowed = this.whitelist.some(domain => 
+        const isAllowed = this.whitelist.some(domain =>
           url.hostname === domain || url.hostname.endsWith('.' + domain)
         );
 
@@ -133,7 +133,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Cambiar contraseña' })
   @ApiResponse({
     status: 200,
-    description: 'Cambio de contraseña exitoso',
+    description: 'Cambio de contraseña exitoso ',
     schema: {
       example: {
         message: 'change password successful',
@@ -278,4 +278,3 @@ export class AuthController {
     return this.authService.changePassword(changePassword);
   }
 }
- 
