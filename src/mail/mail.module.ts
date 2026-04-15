@@ -39,5 +39,5 @@ const templatesPath = process.env.NODE_ENV === 'production'
   providers: [MailService],
   exports: [MailerModule],
 })
-export class MailModule {}
+export class MailModule { }
 
