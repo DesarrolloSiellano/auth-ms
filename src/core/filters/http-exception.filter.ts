@@ -13,6 +13,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
   catch(exception: any, host: ArgumentsHost) {
+    const isRpc = host.getType() === 'rpc';
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
@@ -22,7 +23,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    let message = 
+    let message =
       exception instanceof HttpException
         ? exception.getResponse()
         : exception.message || 'Internal server error';
@@ -38,19 +39,27 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const errorResponse = typeof message === 'object' ? message : { message };
 
     this.logger.error(
-      `HTTP Status: ${status} Error Message: ${JSON.stringify(errorResponse)}`,
+      `${isRpc ? 'RPC' : 'HTTP'} Status: ${status} Error Message: ${JSON.stringify(
+        errorResponse,
+      )}`,
       exception.stack,
     );
 
-    response.status(status).json({
+    const errorBody = {
       message: errorResponse['message'] || message,
-      statusCode: status,
+      ...(!isRpc && { statusCode: status }),
       status: 'Error',
       data: null,
       meta: {
         timestamp: new Date().toISOString(),
-        path: request.url,
+        ...(!isRpc && { path: request?.url }),
       },
-    });
+    };
+
+    if (isRpc) {
+      return errorBody;
+    }
+
+    response.status(status).json(errorBody);
   }
 }
