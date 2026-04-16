@@ -9,6 +9,7 @@ import {
   UseGuards,
   Put,
   Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { UsersService } from './users.service';
@@ -31,7 +32,7 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @Controller('users')
 
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Post()
   @UseGuards(AuthGuard('jwt'))
@@ -56,7 +57,11 @@ export class UsersController {
       },
     },
   })
-  create(@Body() createUserDto: CreateUserDto) { 
+  create(@Body() createUserDto: CreateUserDto, @Req() req: any,) {
+    const user = req.user
+    if (!user.isAdmin) {
+      throw new UnauthorizedException('No tienes permiso para crear usuarios');
+    }
     return this.usersService.create(createUserDto);
   }
 
@@ -78,8 +83,9 @@ export class UsersController {
       },
     },
   })
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Req() req: any) {
+    const user = req.user;
+    return this.usersService.findAll(user);
   }
 
   @Get('findByPage')
@@ -182,10 +188,12 @@ export class UsersController {
     },
   })
   findByDate(
+    @Req() req: any,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
   ) {
-    return this.usersService.findByDate(startDate, endDate);
+    const user = req.user;
+    return this.usersService.findByDate(user, startDate, endDate);
   }
 
   @Put(':id')
@@ -214,7 +222,11 @@ export class UsersController {
     },
   })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Req() req: any) {
+    const user = req.user
+    if (!user.isAdmin) {
+      throw new UnauthorizedException('No tienes permiso para crear usuarios');
+    }
     return this.usersService.update(id, updateUserDto);
   }
 
@@ -243,7 +255,11 @@ export class UsersController {
     },
   })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  remove(@Param('id') id: string) {
+  remove(@Param('id') id: string, @Req() req: any) {
+    const user = req.user
+    if (!user.isAdmin) {
+      throw new UnauthorizedException('No tienes permiso para crear usuarios');
+    }
     return this.usersService.remove(id);
   }
 
@@ -255,13 +271,17 @@ export class UsersController {
   }
 
   @MessagePattern({ cmd: 'findAllUsers' })
-  msFindAll() {
-    return this.usersService.findAll();
+  msFindAll(@Payload() payload: any) {
+    const user = payload?.user;
+    return this.usersService.findAll(user);
   }
 
   @MessagePattern({ cmd: 'findUsersByPagination' })
-  msFindByPagination() {
-    return this.usersService.findByPagination();
+  msFindByPagination(@Payload() payload: any) {
+    const user = payload?.user;
+    const page = payload?.page || 1;
+    const limit = payload?.limit || 10;
+    return this.usersService.findByPagination(user, page, limit);
   }
 
   @MessagePattern({ cmd: 'findUserById' })
@@ -270,8 +290,10 @@ export class UsersController {
   }
 
   @MessagePattern({ cmd: 'findUsersByDate' })
-  msFindByDate() {
-    return this.usersService.findAll(); // Ajustar si implementas filtro en microservicio
+  msFindByDate(@Payload() payload: any) {
+    const user = payload?.user;
+    const { startDate, endDate } = payload;
+    return this.usersService.findByDate(user, startDate, endDate);
   }
 
   @MessagePattern({ cmd: 'updateUser' })
@@ -466,7 +488,7 @@ Ejemplos de uso:
           command: 'removeUser',
           description: 'Elimina un usuario. Payload: id:string.',
           payloadExample: { id: 'id-usuario' },
-          
+
         },
       ],
     };

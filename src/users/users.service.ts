@@ -9,34 +9,35 @@ import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { MailService } from 'src/mail/mail.service';
 import * as crypto from 'crypto';
+import * as generatePassword from 'generate-password';
 
 @Injectable()
 export class UsersService {
-  url = 'https//app.bponet.com.co';
   constructor(
     @InjectModel('User') private readonly userModel: Model<User>,
     private readonly mailService: MailService,
   ) { }
 
   async create(createUserDto: CreateUserDto) {
-    const token = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(token)
-      .digest('hex');
+
+    // Generar contraseña temporal segura
+    const tempPassword = generatePassword.generate({
+      length: 12,
+      numbers: true,
+      uppercase: true,
+      symbols: true,
+      strict: true,
+    });
 
     const userData = {
       ...createUserDto,
       _id: createUserDto._id, // Si viene de otra app, lo usamos; si no, será undefined y Mongo lo generará
-      password: crypto.randomBytes(16).toString('hex'),
-      passwordResetToken: hashedToken,
-      passwordResetExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      password: tempPassword,
     };
 
     const newUser = new this.userModel(userData);
     const result = await newUser.save();
 
-    const setPasswordUrl = `${this.url}/set-password?token=${token}`;
 
     this.mailService.sendEmail({
       to: result.email,
@@ -46,8 +47,8 @@ export class UsersService {
         name: result.name,
         platform_name: 'BpoNet',
         username: result.email,
-        setPasswordUrl: setPasswordUrl,
-        login_url: this.url,
+        password: tempPassword,
+        login_url: userData.redirectUri ? userData.redirectUri : 'https://app.bponet.com.co'
       },
     });
 
@@ -62,8 +63,13 @@ export class UsersService {
     };
   }
 
-  async findAll() {
-    const users = await this.userModel.find().exec();
+  async findAll(user?: any) {
+    const query: any = {};
+    if (user && !user.isSuperAdmin) {
+      query.company = user.company;
+    }
+
+    const users = await this.userModel.find(query).exec();
     if (!users || users.length === 0) {
       throw new NotFoundException('No users found');
     }
@@ -122,11 +128,16 @@ export class UsersService {
   }
 
   // Paginación simple: ?page=1&limit=10 (puedes mejorarla con DTO o query params en el controller)
-  async findByPagination(page = 1, limit = 10) {
+  async findByPagination(user?: any, page = 1, limit = 10) {
+    const query: any = {};
+    if (user && !user.isSuperAdmin) {
+      query.company = user.company;
+    }
+
     const skip = (page - 1) * limit;
     const [users, totalData] = await Promise.all([
-      this.userModel.find().skip(skip).limit(limit).exec(),
-      this.userModel.countDocuments(),
+      this.userModel.find(query).skip(skip).limit(limit).exec(),
+      this.userModel.countDocuments(query),
     ]);
 
     return {
@@ -149,7 +160,7 @@ export class UsersService {
   }
 
   // Si quieres filtrar por fecha de creación, ajusta el DTO y lógica aquí
-  async findByDate(startDate: string, endDate: string) {
+  async findByDate(user?: any, startDate?: string, endDate?: string) {
     // Validación simple de fechas
     if (!startDate || !endDate) {
       throw new NotFoundException(
@@ -165,14 +176,18 @@ export class UsersService {
     end.setHours(23, 59, 59, 999);
 
     // Busca por rango de fechas en createdAt
-    const users = await this.userModel
-      .find({
-        createdAt: {
-          $gte: start,
-          $lte: end,
-        },
-      })
-      .exec();
+    const query: any = {
+      createdAt: {
+        $gte: start,
+        $lte: end,
+      },
+    };
+
+    if (user && !user.isSuperAdmin) {
+      query.company = user.company;
+    }
+
+    const users = await this.userModel.find(query).exec();
 
     if (!users || users.length === 0) {
       throw new NotFoundException('No users found for given date range');
