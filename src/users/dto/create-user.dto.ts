@@ -76,6 +76,9 @@ export class CreateUserDto {
 
   @ApiPropertyOptional({ type: () => [Permission], description: 'Permisos asociados al usuario' })
   permissions?: Permission[];
+
+  @ApiPropertyOptional({ example: 'https://app.bponet.com.co', description: 'URL de redirección' })
+  redirectUri?: string;
 }
 
 
