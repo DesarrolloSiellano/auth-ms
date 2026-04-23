@@ -11,6 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
+import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
 import express from 'express';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { AuthService } from './auth.service';
@@ -29,7 +30,7 @@ import { RealIP } from 'nestjs-real-ip';
 
 @ApiTags('auth')
 @Controller('auth')
-@UseGuards(ThrottlerGuard)
+@UseGuards(ThrottlerHybridGuard)
 export class AuthController {
   private readonly whitelist = ['app.bponet.com.co', 'localhost'];
 
@@ -50,6 +51,7 @@ export class AuthController {
         message: 'Login successful',
         statusCode: 200,
         status: 'Success',
+        url: 'http://localhost:4201/pages/dashboard?access_token=...',
         meta: {
           payload: {
             _id: 'id-usuario',
@@ -99,6 +101,7 @@ export class AuthController {
         }
       } catch (e) {
         // En caso de que redirectUri no sea una URL válida, ignorar redirección
+
       }
     }
 

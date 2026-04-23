@@ -12,6 +12,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
+import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -30,6 +31,7 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @ApiTags('users')
 @ApiBearerAuth()
 @Controller('users')
+@UseGuards(ThrottlerHybridGuard)
 
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }

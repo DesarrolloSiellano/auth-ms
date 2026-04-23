@@ -29,7 +29,7 @@ export class AuthService {
     @InjectModel('Session') private readonly sessionModel: Model<Session>,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async login(login: Login, ip: string = '') {
     const { meta } = login;
@@ -202,7 +202,7 @@ export class AuthService {
       });
 
       // Encriptar la contraseña temporal
-      const hashedPassword = await this.encryptionService.hashPassword(tempPassword);      
+      const hashedPassword = await this.encryptionService.hashPassword(tempPassword);
 
       // Actualizar la contraseña en la base de datos
       const result = await this.userModel.findByIdAndUpdate(userDB._id, {
@@ -238,6 +238,7 @@ export class AuthService {
   }
 
   async changePassword(changePassword: ChangePassword) {
+    console.log(changePassword);
     try {
       const userDB = await this.userModel
         .findOne({ _id: changePassword.id })
