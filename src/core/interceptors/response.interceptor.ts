@@ -14,6 +14,7 @@ export interface Response<T> {
   status: string;
   data: T;
   meta: any;
+  url?: string;
 }
 
 @Injectable()
@@ -62,6 +63,7 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
           message,
           ...(!isRpc && { statusCode }),
           status: 'Success',
+          ...(result?.url && { url: result.url }),
           ...(data !== undefined && { data }),
           meta,
         } as Response<T>;
