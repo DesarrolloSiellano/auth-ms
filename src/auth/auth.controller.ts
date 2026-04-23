@@ -32,7 +32,7 @@ import { RealIP } from 'nestjs-real-ip';
 @Controller('auth')
 @UseGuards(ThrottlerHybridGuard)
 export class AuthController {
-  private readonly whitelist = ['app.bponet.com.co', 'localhost'];
+  private readonly whitelist = ['app.bponet.com.co', 'localhost', 'campaign.bponet.com.co'];
 
   constructor(
     private readonly authService: AuthService,
