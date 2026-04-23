@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
+import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
@@ -28,7 +29,7 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @ApiTags('companies')
 @ApiBearerAuth()
 @Controller('companies')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), ThrottlerHybridGuard)
 export class CompaniesController {
   constructor(private readonly companiesService: CompaniesService) {}
 

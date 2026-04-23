@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
+import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
 import { ModulesService } from './modules.service';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
@@ -32,7 +33,7 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @ApiExtraModels(CreateModuleDto, UpdateModuleDto)
 @ApiBearerAuth()
 @Controller('modules')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), ThrottlerHybridGuard)
 export class ModulesController {
   constructor(private readonly modulesService: ModulesService) {}
 

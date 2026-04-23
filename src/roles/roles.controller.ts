@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
+import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
 import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -28,7 +29,7 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @ApiTags('roles')
 @ApiBearerAuth()
 @Controller('roles')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), ThrottlerHybridGuard)
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
