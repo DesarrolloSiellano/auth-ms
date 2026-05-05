@@ -182,7 +182,7 @@ export class AuthService {
     }
   }
 
-  async recoveryPassword(recovery: RecoveryPassword) {
+  async recoveryPassword(recovery: RecoveryPassword, redirectUri: string) {
     try {
       const userDB = await this.userModel
         .findOne({ email: recovery.email })
@@ -190,6 +190,10 @@ export class AuthService {
 
       if (!userDB) {
         throw new NotFoundException('Usuario no encontrado');
+      }
+
+      if (redirectUri) {
+        this.url = redirectUri;
       }
 
       // Generar contraseña temporal segura

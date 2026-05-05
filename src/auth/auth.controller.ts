@@ -32,7 +32,7 @@ import { RealIP } from 'nestjs-real-ip';
 @Controller('auth')
 @UseGuards(ThrottlerHybridGuard)
 export class AuthController {
-  private readonly whitelist = ['app.bponet.com.co', 'localhost', 'campaign.bponet.com.co'];
+  private readonly whitelist = ['app.bponet.com.co', 'localhost', 'campaign.bponet.com.co', 'educative.bponet.com.co'];
 
   constructor(
     private readonly authService: AuthService,
@@ -128,8 +128,8 @@ export class AuthController {
   })
   @ApiResponse({ status: 400, description: 'Error al recuperar contraseña' })
   @ApiBody({ type: RecoveryPassword })
-  recoveryPassword(@Body() recoveryPassword: RecoveryPassword) {
-    return this.authService.recoveryPassword(recoveryPassword);
+  recoveryPassword(@Body() recoveryPassword: RecoveryPassword, @Query('redirectUri') redirectUri: string,) {
+    return this.authService.recoveryPassword(recoveryPassword, redirectUri);
   }
 
   @Post('change-password')
