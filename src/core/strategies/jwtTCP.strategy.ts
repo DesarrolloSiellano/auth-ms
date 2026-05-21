@@ -37,6 +37,9 @@ export class JwtTCPStrategy {
       const user = await this.userModel.findById(_id).exec();
       return user;
     } catch (err) {
+      if (err instanceof jwt.TokenExpiredError) {
+        throw new UnauthorizedException('SESSION_EXPIRED');
+      }
       throw new UnauthorizedException('Token inválido');
     }
   }
