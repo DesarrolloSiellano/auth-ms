@@ -74,8 +74,6 @@ export class AuthService {
       permissions: userDB.permissions,
     };
 
-    console.log(payload);
-
     const accessToken = this.getJwtToken(
       payload,
       this.configService.get<string>('JWT_SECRET'),
@@ -109,23 +107,6 @@ export class AuthService {
     const newSession = new this.sessionModel(session);
     await newSession.save();
 
-    this.mailService
-      .sendEmail({
-        to: login.email,
-        subject: 'Inicio de sesión - BpoNet',
-        template: 'session',
-        context: {
-          name: session.name,
-          platform_name: 'BpoNet',
-          os: meta?.os || '',
-          browser: meta?.browser || '',
-          user_agent: meta?.user_agent || '',
-        },
-      })
-      .catch((error) => {
-        console.log(error, error);
-      });
-
     return {
       message: 'Login successful',
       meta: {
@@ -148,13 +129,14 @@ export class AuthService {
       // 2. Find Session and User
       const session = await this.sessionModel
         .findOne({ refreshToken, isActive: true })
+        .lean()
         .exec();
 
       if (!session) {
         throw new ForbiddenException('Invalid or expired refresh token');
       }
 
-      const user = await this.userModel.findById(session.user).exec();
+      const user = await this.userModel.findById(session.user).lean().exec();
       if (!user || !user.isActived) {
         throw new ForbiddenException('User is inactive or no longer exists');
       }
@@ -185,6 +167,9 @@ export class AuthService {
       );
 
       return {
+        statusCode: 200,
+        status: 'Success',
+        message: 'Token refreshed successfully',
         accessToken,
         payload: newPayload,
       };

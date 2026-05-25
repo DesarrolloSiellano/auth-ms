@@ -14,6 +14,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
   constructor(private readonly idempotencyService: IdempotencyService) {}
 
   async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<any>> {
+    if (context.getType() !== 'http') {
+      return next.handle();
+    }
+
     const request = context.switchToHttp().getRequest();
     const { method, url } = request;
 
@@ -48,9 +52,13 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     // Si no existe, procesamos la petición y guardamos el resultado exitoso
     return next.handle().pipe(
-      tap(async (response) => {
+      tap((response) => {
         // Solo guardamos si la respuesta es exitosa (por simplicidad, asumimos que si llega aquí es exitosa)
-        await this.idempotencyService.saveKey(idempotencyKey, method, url, response);
+        this.idempotencyService
+          .saveKey(idempotencyKey, method, url, response)
+          .catch((error) => {
+            console.error('Error saving idempotency key:', error);
+          });
       }),
     );
   }

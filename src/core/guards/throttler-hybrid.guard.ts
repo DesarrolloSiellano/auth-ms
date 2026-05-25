@@ -12,4 +12,17 @@ export class ThrottlerHybridGuard extends ThrottlerGuard {
     // Para HTTP (y otros), usamos el comportamiento estándar
     return super.canActivate(context);
   }
+
+  // Obtiene la IP real del cliente detrás de un proxy (Docker/Nginx)
+  protected getTracker(req: Record<string, any>): Promise<string> {
+    const forwardedFor = req.headers?.['x-forwarded-for'];
+    if (forwardedFor) {
+      return Promise.resolve(
+        typeof forwardedFor === 'string'
+          ? forwardedFor.split(',')[0].trim()
+          : forwardedFor[0],
+      );
+    }
+    return Promise.resolve(req.ip || req.connection?.remoteAddress || '');
+  }
 }

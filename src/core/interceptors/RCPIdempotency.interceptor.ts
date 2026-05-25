@@ -22,9 +22,11 @@ export class RpcIdempotencyInterceptor implements NestInterceptor {
     }
 
     const data = context.switchToRpc().getData();
-    const pattern = JSON.stringify(
-      context.switchToRpc().getContext()?.pattern ?? {},
-    );
+    const rawPattern = context.switchToRpc().getContext()?.getPattern();
+    const pattern =
+      typeof rawPattern === 'object'
+        ? JSON.stringify(rawPattern)
+        : String(rawPattern ?? '');
     const idempotencyKey = data?.idempotencyKey;
 
     if (!idempotencyKey) {

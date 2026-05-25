@@ -84,7 +84,7 @@ export class SetDataInit implements OnApplicationBootstrap {
 
   async createInitRoles() {
     try {
-      const permissions = await this.permissionsModel.find().exec();
+      const permissions = await this.permissionsModel.find().lean().exec();
 
       for (const role of ROLES) {
         const roleExists = await this.rolModel
@@ -190,9 +190,9 @@ export class SetDataInit implements OnApplicationBootstrap {
         return;
       }
 
-      const modules = await this.moduleModel.find().exec();
-      const permissions = await this.permissionsModel.find().exec();
-      const roles = await this.rolModel.find().exec();
+      const modules = await this.moduleModel.find().lean().exec();
+      const permissions = await this.permissionsModel.find().lean().exec();
+      const roles = await this.rolModel.find().lean().exec();
 
       const tenantId = String(company.id);
       const companyName = String(company.name);
@@ -206,6 +206,7 @@ export class SetDataInit implements OnApplicationBootstrap {
               ...(adminUser.username ? [{ username: adminUser.username }] : []),
             ],
           })
+          .lean()
           .exec();
 
         if (existingAdmin) {
@@ -280,6 +281,7 @@ export class SetDataInit implements OnApplicationBootstrap {
        */
       const bponetCompany = await this.companyModel
         .findOne({ name: 'BPONET' })
+        .lean()
         .exec();
 
       if (!bponetCompany) {

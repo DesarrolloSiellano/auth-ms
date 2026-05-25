@@ -279,9 +279,10 @@ export class AuthController {
 
   // Endpoint de microservicio (no documentado por Swagger)
   @MessagePattern({ cmd: 'login' })
-  /* msLogin(@Payload() login: Login, @RealIP() ip: string) {
-    return this.authService.login(login, ip); 
-  } */
+  msLogin(@Payload() login: Login, @RealIP() ip: string) {
+    return this.authService.login(login, ip);
+  }
+
   @MessagePattern({ cmd: 'validateUser' })
   async msValidateUser(@Payload() token: string) {
     const user = await this.jwtTCPStrategy.validate(token);
@@ -293,6 +294,11 @@ export class AuthController {
         valid: true,
       },
     };
+  }
+
+  @MessagePattern({ cmd: 'refresh' })
+  async msRefresh(@Payload() refreshTokenDto: RefreshToken) {
+    return this.authService.refreshAccessToken(refreshTokenDto.refreshToken);
   }
 
   @MessagePattern({ cmd: 'changePassword' })

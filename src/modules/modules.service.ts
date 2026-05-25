@@ -33,7 +33,7 @@ export class ModulesService {
   }
 
   async findAll() {
-    const modules = await this.moduleModel.find().exec();
+    const modules = await this.moduleModel.find().lean().exec();
     if (!modules) {
       throw new NotFoundException('No modules found');
     }
@@ -42,7 +42,7 @@ export class ModulesService {
   }
 
   async findOne(id: string) {
-    const module = await this.moduleModel.findById(id).exec();
+    const module = await this.moduleModel.findById(id).lean().exec();
     if (!module) {
       throw new NotFoundException(`Module with ID ${id} not found`);
     }

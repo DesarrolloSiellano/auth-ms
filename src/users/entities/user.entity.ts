@@ -144,6 +144,7 @@ UserSchema.index({ company: 1, email: 1 }, { unique: true });
 UserSchema.index({ company: 1, name: 1, lastName: 1 });
 UserSchema.index({ company: 1, username: 1 });
 UserSchema.index({ company: 1, phone: 1 });
+UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 addTenantIndexes(UserSchema, ['email']);
 
 UserSchema.pre('save', async function (next) {

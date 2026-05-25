@@ -3,13 +3,10 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { ResponseInterceptor } from './core/interceptors/response.interceptor';
 import { HttpExceptionFilter } from './core/filters/http-exception.filter';
 import { Logger } from 'nestjs-pino';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import { IdempotencyInterceptor } from './core/interceptors/idempotency.interceptor';
-import { IdempotencyService } from './core/idempotency/idempotency.service';
 async function bootstrap() {
   // Antes de crear la app, copia la carpeta de templates si no existe en dist
   const srcTemplates = path.resolve(process.cwd(), 'src', 'mail', 'templates');
@@ -51,12 +48,7 @@ async function bootstrap() {
     credentials: false,
   });
 
-  // Global Interceptors and Filters
-  const idempotencyService = app.get(IdempotencyService);
-  app.useGlobalInterceptors(
-    new IdempotencyInterceptor(idempotencyService),
-    new ResponseInterceptor(),
-  );
+  // Global Filters (Interceptors are registered globally in AppModule)
   app.useGlobalFilters(new HttpExceptionFilter());
 
   // Swagger/OpenAPI Configuración

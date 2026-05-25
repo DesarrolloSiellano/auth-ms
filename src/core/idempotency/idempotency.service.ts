@@ -12,7 +12,7 @@ export class IdempotencyService {
 
   async findKey(key: string, method: string, path: string): Promise<Idempotency | null> {
     // MongoDB maneja la expiración automáticamente mediante el índice TTL
-    return this.idempotencyModel.findOne({ key, method, path }).exec();
+    return this.idempotencyModel.findOne({ key, method, path }).lean().exec();
   }
 
   async saveKey(key: string, method: string, path: string, response: any): Promise<void> {
