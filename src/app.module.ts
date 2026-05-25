@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import * as path from 'path';
 import { AppController } from './app.controller';
@@ -20,8 +20,12 @@ import { CompaniesModule } from './companies/companies.module';
 import { MailModule } from './mail/mail.module';
 import { LoggerModule } from 'nestjs-pino';
 import { envValidationSchema } from './core/config/env.validation';
-
-
+import { TenantMiddleware } from './core/database/tenant.middleware';
+import { IdempotencyModule } from './core/idempotency/idempotency.module';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ResponseInterceptor } from './core/interceptors/response.interceptor';
+import { IdempotencyInterceptor } from './core/interceptors/idempotency.interceptor';
+import { RpcIdempotencyInterceptor } from './core/interceptors/RCPIdempotency.interceptor';
 
 @Module({
   imports: [
@@ -32,15 +36,18 @@ import { envValidationSchema } from './core/config/env.validation';
     }),
     LoggerModule.forRoot({
       pinoHttp: {
-        timestamp: () => `,"time":"${new Intl.DateTimeFormat('sv-SE', {
-          timeZone: 'America/Bogota',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }).format(new Date()).replace(' ', 'T')}"`,
+        timestamp: () =>
+          `,"time":"${new Intl.DateTimeFormat('sv-SE', {
+            timeZone: 'America/Bogota',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          })
+            .format(new Date())
+            .replace(' ', 'T')}"`,
         transport: {
           targets: [
             {
@@ -73,6 +80,7 @@ import { envValidationSchema } from './core/config/env.validation';
     StrategyJwtGlobalModule,
     DatabaseModule,
     SetDataInitModule,
+    IdempotencyModule,
     UsersModule,
     AuthModule,
     RolesModule,
@@ -80,10 +88,28 @@ import { envValidationSchema } from './core/config/env.validation';
     ModulesModule,
     SessionsModule,
     CompaniesModule,
-    MailModule
+    MailModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: IdempotencyInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RpcIdempotencyInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ResponseInterceptor,
+    },
+  ],
   exports: [MailModule],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TenantMiddleware).forRoutes('*');
+  }
+}

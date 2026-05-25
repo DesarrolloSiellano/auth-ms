@@ -1,17 +1,20 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+
 import { Permission } from 'src/permissions/entities/permission.entity';
 import { Rol } from 'src/roles/entities/role.entity';
 import { User } from 'src/users/entities/user.entity';
+import { Module } from 'src/modules/entities/module.entity';
+import { Company } from 'src/companies/entities/company.entity';
 
 import { PERMISSIONS } from 'src/set-data-init/helpers/permissions.admin';
 import { ROLES } from 'src/set-data-init/helpers/role.admin';
 import { ADMIN_USER } from './helpers/user.admin';
-import { Module } from 'src/modules/entities/module.entity';
 import { ADMIN_MODULE } from './helpers/modules.admin';
-import { Company } from 'src/companies/entities/company.entity';
 import { ADMIN_COMPANY } from './helpers/companies.admin';
+
+import { tenantLocalStorage } from 'src/core/database/tenant.context';
 
 @Injectable()
 export class SetDataInit implements OnApplicationBootstrap {
@@ -24,16 +27,56 @@ export class SetDataInit implements OnApplicationBootstrap {
     @InjectModel('User') private readonly userModel: Model<User>,
     @InjectModel('Module') private readonly moduleModel: Model<Module>,
     @InjectModel('Company') private readonly companyModel: Model<Company>,
-  ) { }
+  ) {}
 
   async createInitModules() {
     try {
-      await this.moduleModel.insertMany(ADMIN_MODULE, { ordered: false });
-      this.logger.log('Modules initialized successfully');
+      for (const moduleItem of ADMIN_MODULE) {
+        const moduleExists = await this.moduleModel
+          .findOne({ name: moduleItem.name })
+          .lean()
+          .exec();
+
+        if (moduleExists) {
+          this.logger.warn(
+            `Module ${moduleItem.name} already exists, skipping.`,
+          );
+          continue;
+        }
+        await this.moduleModel.create(moduleItem);
+        this.logger.log(`Module ${moduleItem.name} created successfully.`);
+      }
+    } catch (error) {
+      this.logger.error('Error initializing modules', error);
+      throw error;
+    }
+  }
+
+  async createInitPermissions() {
+    try {
+      for (const permission of PERMISSIONS) {
+        const permissionExists = await this.permissionsModel
+          .findOne({ name: permission.name })
+          .lean()
+          .exec();
+
+        if (permissionExists) {
+          this.logger.warn(
+            `Permission ${permission.name} already exists, skipping.`,
+          );
+          continue;
+        }
+
+        await this.permissionsModel.create(permission);
+        this.logger.log(`Permission ${permission.name} created successfully.`);
+      }
+
+      this.logger.log('Permissions initialized successfully');
     } catch (error) {
       if (error.code === 11000) {
-        this.logger.warn('Some modules already exist, skipping duplicates');
+        this.logger.warn('Some permissions already exist, skipping duplicates');
       } else {
+        this.logger.error('Error initializing permissions', error);
         throw error;
       }
     }
@@ -41,24 +84,71 @@ export class SetDataInit implements OnApplicationBootstrap {
 
   async createInitRoles() {
     try {
-      // Obtén todos los permisos de la base de datos
-      const permissions = await this.permissionsModel.find().exec();
-      // Para cada rol en ROLES crea un nuevo documento con el arreglo de IDs de permisos
+      const permissions = await this.permissionsModel.find().lean().exec();
+
       for (const role of ROLES) {
-        // Crea un nuevo objeto rol pasando las propiedades del rol y asignando permisos solo con _id
-        const newRole = new this.rolModel({
-          ...role,
-          permissions: permissions.map((permission) => ({
+        const roleExists = await this.rolModel
+          .findOne({ name: role.name })
+          .lean()
+          .exec();
+
+        if (roleExists) {
+          this.logger.warn(`Role ${role.name} already exists, skipping.`);
+          continue;
+        }
+
+        /**
+         * Definir permisos activos según el rol
+         */
+        const rolePermissions = permissions.map((permission) => {
+          let isPermissionActive = false;
+
+          /**
+           * ADMINISTRADOR
+           * Todos los permisos activos
+           */
+          if (role.codeRol === 'ADM') {
+            isPermissionActive = true;
+          }
+
+          /**
+           * AUDITOR
+           * Solo READ
+           */
+          if (role.codeRol === 'AUD') {
+            isPermissionActive = permission.action === 'read';
+          }
+
+          /**
+           * USUARIO BÁSICO
+           * CREATE, READ, UPDATE activos
+           * DELETE desactivado
+           */
+          if (role.codeRol === 'USR') {
+            isPermissionActive = ['create', 'read', 'update'].includes(
+              permission.action,
+            );
+          }
+
+          return {
             _id: permission._id,
             name: permission.name,
             description: permission.description,
             action: permission.action,
-            isActive: permission.isActive,
-            // cualquier otro campo relevante según el esquema
-          })),
+            resource: permission.resource,
+            type: permission.type,
+            isActive: isPermissionActive,
+          };
         });
-        // Guarda el nuevo rol en la base de datos
+
+        const newRole = new this.rolModel({
+          ...role,
+          permissions: rolePermissions,
+        });
+
         await newRole.save();
+
+        this.logger.log(`Role ${role.name} created successfully.`);
       }
 
       this.logger.log('Roles initialized successfully');
@@ -72,19 +162,6 @@ export class SetDataInit implements OnApplicationBootstrap {
     }
   }
 
-  async createInitPermissions() {
-    try {
-      await this.permissionsModel.insertMany(PERMISSIONS, { ordered: false });
-      this.logger.log('Permissions initialized successfully');
-    } catch (error) {
-      if (error.code === 11000) {
-        this.logger.warn('Some permissions already exist, skipping duplicates');
-      } else {
-        throw error;
-      }
-    }
-  }
-
   async createInitCompanies() {
     try {
       await this.companyModel.insertMany(ADMIN_COMPANY, { ordered: false });
@@ -93,6 +170,7 @@ export class SetDataInit implements OnApplicationBootstrap {
       if (error.code === 11000) {
         this.logger.warn('Some companies already exist, skipping duplicates');
       } else {
+        this.logger.error('Error initializing companies', error);
         throw error;
       }
     }
@@ -100,23 +178,67 @@ export class SetDataInit implements OnApplicationBootstrap {
 
   async createAdminUsers() {
     try {
-      const modules = await this.moduleModel.find().exec();
-      const permissions = await this.permissionsModel.find().exec();
-      const roles = await this.rolModel.find().exec();
-      const company = await this.companyModel.findOne({ name: 'BPONET' }).exec();
+      const company = await this.companyModel
+        .findOne({ name: 'BPONET' })
+        .lean()
+        .exec();
 
-      // Recorrer cada administrador en ADMIN_USER y crear documento en DB con los subdocumentos
+      if (!company) {
+        this.logger.error(
+          'Company BPONET was not found. Admin users cannot be created.',
+        );
+        return;
+      }
+
+      const modules = await this.moduleModel.find().lean().exec();
+      const permissions = await this.permissionsModel.find().lean().exec();
+      const roles = await this.rolModel.find().lean().exec();
+
+      const tenantId = String(company.id);
+      const companyName = String(company.name);
+
       for (const adminUser of ADMIN_USER) {
-        const admin = new this.userModel({
-          ...adminUser,
-          modules: modules,
-          roles: roles,
-          permissions: permissions,
-          company: company ? company.name : '',
-        });
+        const existingAdmin = await this.userModel
+          .findOne({
+            company: companyName,
+            $or: [
+              ...(adminUser.email ? [{ email: adminUser.email }] : []),
+              ...(adminUser.username ? [{ username: adminUser.username }] : []),
+            ],
+          })
+          .lean()
+          .exec();
 
-        await admin.save();
-        this.logger.log(`Admin user ${adminUser.email || adminUser.username} created successfully.`);
+        if (existingAdmin) {
+          this.logger.warn(
+            `Admin user ${adminUser.email || adminUser.username} already exists in BPONET, skipping.`,
+          );
+          continue;
+        }
+
+        await tenantLocalStorage.run(
+          {
+            tenantId,
+            companyId: companyName,
+            isSuperAdmin: true,
+          },
+          async () => {
+            const admin = new this.userModel({
+              ...adminUser,
+              modules,
+              roles,
+              permissions,
+              company: companyName,
+              tenantId,
+            });
+
+            await admin.save();
+
+            this.logger.log(
+              `Admin user ${adminUser.email || adminUser.username} created successfully.`,
+            );
+          },
+        );
       }
     } catch (error) {
       this.logger.error('Error creating admin users', error);
@@ -124,43 +246,59 @@ export class SetDataInit implements OnApplicationBootstrap {
     }
   }
 
-
   async onApplicationBootstrap() {
     await this.validateIfDataExists();
   }
 
   async validateIfDataExists() {
     try {
-      const moduleCount = await this.moduleModel.countDocuments().exec();
-      const rolCount = await this.rolModel.countDocuments().exec();
-      const permissionsCount = await this.permissionsModel
-        .countDocuments()
-        .exec();
-      const userCount = await this.userModel.countDocuments().exec();
-      const companyCount = await this.companyModel.countDocuments().exec();
+      /**
+       * Modules
+       */
+      this.logger.log('Validating initial modules...');
+      await this.createInitModules();
 
-      if (moduleCount === 0) {
-        this.logger.warn('No modules found, creating an admin module...');
-        await this.createInitModules();
+      /**
+       * Permissions
+       */
+      this.logger.log('Validating initial permissions...');
+      await this.createInitPermissions();
+
+      /**
+       * Roles
+       */
+      this.logger.log('Validating initial roles...');
+      await this.createInitRoles();
+
+      /**
+       * Companies
+       */
+      this.logger.log('Validating initial companies...');
+      await this.createInitCompanies();
+
+      /**
+       * Buscar empresa BPONET
+       */
+      const bponetCompany = await this.companyModel
+        .findOne({ name: 'BPONET' })
+        .lean()
+        .exec();
+
+      if (!bponetCompany) {
+        this.logger.error(
+          'BPONET company does not exist after initialization.',
+        );
+        return;
       }
-      if (permissionsCount === 0) {
-        this.logger.warn('No permissions found, creating an data admin...');
-        await this.createInitPermissions();
-      }
-      if (rolCount === 0) {
-        this.logger.warn('No roles found, creating an data admin...');
-        await this.createInitRoles();
-      }
-      if (companyCount === 0) {
-        this.logger.warn('No companies found, creating initial company...');
-        await this.createInitCompanies();
-      }
-      if (userCount === 0) {
-        this.logger.warn('No users found, creating an admin user...');
-        await this.createAdminUsers();
-      }
+
+      /**
+       * Crear admins si no existen
+       */
+      await this.createAdminUsers();
+
+      this.logger.log('Initial data validation completed successfully.');
     } catch (error) {
-      this.logger.error('Error validating if data exists', error);
+      this.logger.error('Error validating initial data', error);
     }
   }
 }

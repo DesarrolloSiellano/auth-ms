@@ -34,7 +34,7 @@ export class JwtTCPStrategy {
     try {
       const payload = jwt.verify(token, this.secret) as UserPayload;
       const { _id } = payload;
-      const user = await this.userModel.findById(_id).exec();
+      const user = await this.userModel.findById(_id).lean().exec();
       return user;
     } catch (err) {
       if (err instanceof jwt.TokenExpiredError) {

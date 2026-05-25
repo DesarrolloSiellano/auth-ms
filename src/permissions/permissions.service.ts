@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Permission } from './entities/permission.entity';
@@ -36,14 +33,14 @@ export class PermissionsService {
   }
 
   async findAll() {
-    const permissions = await this.permissionModel.find().exec();
-    if (!permissions) {
+    const permissions = await this.permissionModel.find().lean().exec();
+    if (!permissions || permissions.length === 0) {
       throw new NotFoundException('No permissions found');
     }
     return permissions;
   }
 
-  async findByPage(from?: number, limit?: number, global?: any, filters?: any) {
+  async findByPage(from?: number, limit?: number, global?: any) {
     const query: any = {};
     if (global) {
       query.$or = [
@@ -55,12 +52,18 @@ export class PermissionsService {
     }
     const skipNumber = from && from >= 0 ? from : 0;
     const limitNumber = limit && limit > 0 ? limit : 100;
-    const docs = await this.permissionModel
-      .find(query)
-      .skip(skipNumber)
-      .limit(limitNumber);
-    const totalData = await this.permissionModel.countDocuments(query);
-    
+
+    const [docs, totalData] = await Promise.all([
+      this.permissionModel
+        .find(query)
+        .select('name description action resource type isActive')
+        .skip(skipNumber)
+        .limit(limitNumber)
+        .lean()
+        .exec(),
+      this.permissionModel.countDocuments(query).exec(),
+    ]);
+
     return {
       message: 'Permissions found',
       data: docs,
@@ -71,7 +74,7 @@ export class PermissionsService {
   }
 
   async findOne(id: string) {
-    const permission = await this.permissionModel.findById(id).exec();
+    const permission = await this.permissionModel.findById(id).lean().exec();
     if (!permission) {
       throw new NotFoundException(`Permission with ID ${id} not found`);
     }

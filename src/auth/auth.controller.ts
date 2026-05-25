@@ -10,12 +10,18 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
 import express from 'express';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { AuthService } from './auth.service';
-import { ChangePassword, Login, RecoveryPassword, SetPasswordWithToken, RefreshToken } from './dto/auth.dto';
+import {
+  ChangePassword,
+  Login,
+  RecoveryPassword,
+  SetPasswordWithToken,
+  RefreshToken,
+} from './dto/auth.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -32,12 +38,18 @@ import { RealIP } from 'nestjs-real-ip';
 @Controller('auth')
 @UseGuards(ThrottlerHybridGuard)
 export class AuthController {
-  private readonly whitelist = ['app.bponet.com.co', 'localhost', 'campaign.bponet.com.co', 'educative.bponet.com.co', 'helpdesk.bponet.com.co'];
+  private readonly whitelist = [
+    'app.bponet.com.co',
+    'localhost',
+    'campaign.bponet.com.co',
+    'educative.bponet.com.co',
+    'helpdesk.bponet.com.co',
+  ];
 
   constructor(
     private readonly authService: AuthService,
     private jwtTCPStrategy: JwtTCPStrategy,
-  ) { }
+  ) {}
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -87,8 +99,9 @@ export class AuthController {
     if (redirectUri && redirectUri !== 'null') {
       try {
         const url = new URL(redirectUri);
-        const isAllowed = this.whitelist.some(domain =>
-          url.hostname === domain || url.hostname.endsWith('.' + domain)
+        const isAllowed = this.whitelist.some(
+          (domain) =>
+            url.hostname === domain || url.hostname.endsWith('.' + domain),
         );
 
         if (isAllowed) {
@@ -101,7 +114,7 @@ export class AuthController {
         }
       } catch (e) {
         // En caso de que redirectUri no sea una URL válida, ignorar redirección
-
+        console.log('Error redirectUri', e);
       }
     }
 
@@ -128,7 +141,10 @@ export class AuthController {
   })
   @ApiResponse({ status: 400, description: 'Error al recuperar contraseña' })
   @ApiBody({ type: RecoveryPassword })
-  recoveryPassword(@Body() recoveryPassword: RecoveryPassword, @Query('redirectUri') redirectUri: string,) {
+  recoveryPassword(
+    @Body() recoveryPassword: RecoveryPassword,
+    @Query('redirectUri') redirectUri: string,
+  ) {
     return this.authService.recoveryPassword(recoveryPassword, redirectUri);
   }
 
@@ -222,7 +238,7 @@ export class AuthController {
     },
   })
   @ApiBearerAuth()
-  async validateUser(@Req() req: any) {
+  validateUser(@Req() req: any) {
     const user = req.user as UserPayload;
 
     return {
@@ -236,7 +252,9 @@ export class AuthController {
   }
 
   @Post('set-password-token')
-  @ApiOperation({ summary: 'Establecer contraseña usando un token de activación' })
+  @ApiOperation({
+    summary: 'Establecer contraseña usando un token de activación',
+  })
   @ApiResponse({
     status: 200,
     description: 'Contraseña establecida exitosamente',
@@ -251,16 +269,19 @@ export class AuthController {
   @Post('refresh')
   @ApiOperation({ summary: 'Refrescar token de acceso' })
   @ApiResponse({ status: 200, description: 'Token refrescado correctamente' })
-  @ApiResponse({ status: 403, description: 'Token de refresco inválido o expirado' })
+  @ApiResponse({
+    status: 403,
+    description: 'Token de refresco inválido o expirado',
+  })
   async refresh(@Body() refreshTokenDto: RefreshToken) {
     return this.authService.refreshAccessToken(refreshTokenDto.refreshToken);
   }
 
   // Endpoint de microservicio (no documentado por Swagger)
   @MessagePattern({ cmd: 'login' })
-  /* msLogin(@Payload() login: Login, @RealIP() ip: string) {
-    return this.authService.login(login, ip); 
-  } */
+  msLogin(@Payload() login: Login, @RealIP() ip: string) {
+    return this.authService.login(login, ip);
+  }
 
   @MessagePattern({ cmd: 'validateUser' })
   async msValidateUser(@Payload() token: string) {
@@ -275,6 +296,10 @@ export class AuthController {
     };
   }
 
+  @MessagePattern({ cmd: 'refresh' })
+  async msRefresh(@Payload() refreshTokenDto: RefreshToken) {
+    return this.authService.refreshAccessToken(refreshTokenDto.refreshToken);
+  }
 
   @MessagePattern({ cmd: 'changePassword' })
   msRecoveryPassword(@Payload() changePassword: ChangePassword) {

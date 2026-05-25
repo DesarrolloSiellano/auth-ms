@@ -5,11 +5,11 @@ export interface Module extends Document {
   description: string;
   created: Date;
   modified?: Date;
-  dateCreated?: String;
-  hourCreated?: String;
-  dateModified?: String;
-  hourModified?: String;
-  idUserModified?: String;
+  dateCreated?: string;
+  hourCreated?: string;
+  dateModified?: string;
+  hourModified?: string;
+  idUserModified?: string;
   isActive: boolean;
   isSystemModule: boolean;
   router: Route[];
@@ -64,5 +64,7 @@ export const ModuleSchema = new Schema({
     },
   ],
 });
+
+ModuleSchema.index({ name: 1 }, { unique: true });
 
 export const ModuleModel = model<Module>('Module', ModuleSchema);

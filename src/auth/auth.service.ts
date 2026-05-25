@@ -12,7 +12,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User } from 'src/users/entities/user.entity';
 import { JwtService } from '@nestjs/jwt';
-import { JwtPayload } from 'src/core/interfaces/jwt-payload.interface';
 import * as generatePassword from 'generate-password';
 import { MailService } from 'src/mail/mail.service';
 import { Session } from 'src/sessions/entities/session.entity';
@@ -29,11 +28,14 @@ export class AuthService {
     @InjectModel('Session') private readonly sessionModel: Model<Session>,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
   async login(login: Login, ip: string = '') {
     const { meta } = login;
-    const userDB = await this.userModel.findOne({ email: login.email }).exec();
+    const userDB = await this.userModel
+      .findOne({ email: login.email })
+      .lean()
+      .exec();
 
     if (!userDB) {
       throw new ForbiddenException('Usuario no encontrado');
@@ -66,6 +68,7 @@ export class AuthService {
       isSuperAdmin: userDB.isSuperAdmin,
       isNewUser: userDB.isNewUser,
       company: userDB.company,
+      tenantId: userDB.tenantId,
       modules: userDB.modules,
       roles: userDB.roles,
       permissions: userDB.permissions,
@@ -88,6 +91,7 @@ export class AuthService {
       name: userDB.name + ' ' + userDB.lastName,
       email: userDB.email,
       company: userDB.company,
+      tenantId: userDB.tenantId || userDB.company || '0000000',
       ip: ip,
       user_gent: meta?.user_agent || '',
       os: meta?.os || '',
@@ -102,19 +106,6 @@ export class AuthService {
 
     const newSession = new this.sessionModel(session);
     await newSession.save();
-
-    this.mailService.sendEmail({
-      to: login.email,
-      subject: 'Inicio de sesión - BpoNet',
-      template: 'session',
-      context: {
-        name: session.name,
-        platform_name: 'BpoNet',
-        os: meta?.os || '',
-        browser: meta?.browser || '',
-        user_agent: meta?.user_agent || '',
-      },
-    });
 
     return {
       message: 'Login successful',
@@ -131,20 +122,21 @@ export class AuthService {
   async refreshAccessToken(refreshToken: string) {
     try {
       // 1. Verify Refresh Token
-      const payload = this.jwtService.verify(refreshToken, {
+      /*  const payload = this.jwtService.verify(refreshToken, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      });
+      }); */
 
       // 2. Find Session and User
       const session = await this.sessionModel
         .findOne({ refreshToken, isActive: true })
+        .lean()
         .exec();
 
       if (!session) {
         throw new ForbiddenException('Invalid or expired refresh token');
       }
 
-      const user = await this.userModel.findById(session.user).exec();
+      const user = await this.userModel.findById(session.user).lean().exec();
       if (!user || !user.isActived) {
         throw new ForbiddenException('User is inactive or no longer exists');
       }
@@ -162,6 +154,7 @@ export class AuthService {
         isSuperAdmin: user.isSuperAdmin,
         isNewUser: user.isNewUser,
         company: user.company,
+        tenantId: user.tenantId,
         modules: user.modules,
         roles: user.roles,
         permissions: user.permissions,
@@ -174,10 +167,14 @@ export class AuthService {
       );
 
       return {
+        statusCode: 200,
+        status: 'Success',
+        message: 'Token refreshed successfully',
         accessToken,
         payload: newPayload,
       };
     } catch (error) {
+      console.log(error, error);
       throw new ForbiddenException('Invalid refresh token');
     }
   }
@@ -206,7 +203,8 @@ export class AuthService {
       });
 
       // Encriptar la contraseña temporal
-      const hashedPassword = await this.encryptionService.hashPassword(tempPassword);
+      const hashedPassword =
+        await this.encryptionService.hashPassword(tempPassword);
 
       // Actualizar la contraseña en la base de datos
       const result = await this.userModel.findByIdAndUpdate(userDB._id, {
@@ -216,7 +214,9 @@ export class AuthService {
       });
 
       if (!result) {
-        throw new InternalServerErrorException('Error al actualizar la contraseña');
+        throw new InternalServerErrorException(
+          'Error al actualizar la contraseña',
+        );
       }
 
       // Enviar correo al usuario con la contraseña temporal
@@ -288,10 +288,7 @@ export class AuthService {
   async setPasswordWithToken(setPasswordDto: SetPasswordWithToken) {
     const { token, password } = setPasswordDto;
 
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(token)
-      .digest('hex');
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
     const user = await this.userModel.findOne({
       passwordResetToken: hashedToken,
@@ -318,7 +315,8 @@ export class AuthService {
   private getJwtToken(payload: any, secret?: string, expiresIn?: string) {
     return this.jwtService.sign(payload, {
       secret: secret || this.configService.get<string>('JWT_SECRET'),
-      expiresIn: expiresIn || this.configService.get<string>('JWT_EXPIRATION', '30d'),
+      expiresIn:
+        expiresIn || this.configService.get<string>('JWT_EXPIRATION', '30d'),
     });
   }
 }

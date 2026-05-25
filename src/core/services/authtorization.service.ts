@@ -40,5 +40,4 @@ export class AuthorizationService {
     // Si llega aquí, no tiene permisos suficientes
     return false;
   }
-
 }
