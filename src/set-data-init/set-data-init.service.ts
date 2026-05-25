@@ -34,7 +34,6 @@ export class SetDataInit implements OnApplicationBootstrap {
       for (const moduleItem of ADMIN_MODULE) {
         const moduleExists = await this.moduleModel
           .findOne({ name: moduleItem.name })
-          .select('_id')
           .lean()
           .exec();
 
@@ -44,7 +43,6 @@ export class SetDataInit implements OnApplicationBootstrap {
           );
           continue;
         }
-
         await this.moduleModel.create(moduleItem);
         this.logger.log(`Module ${moduleItem.name} created successfully.`);
       }
@@ -56,13 +54,22 @@ export class SetDataInit implements OnApplicationBootstrap {
 
   async createInitPermissions() {
     try {
-      const permissionsToInsert = PERMISSIONS.map((permission) => ({
-        ...permission,
-      }));
+      for (const permission of PERMISSIONS) {
+        const permissionExists = await this.permissionsModel
+          .findOne({ name: permission.name })
+          .lean()
+          .exec();
 
-      await this.permissionsModel.insertMany(permissionsToInsert, {
-        ordered: false,
-      });
+        if (permissionExists) {
+          this.logger.warn(
+            `Permission ${permission.name} already exists, skipping.`,
+          );
+          continue;
+        }
+
+        await this.permissionsModel.create(permission);
+        this.logger.log(`Permission ${permission.name} created successfully.`);
+      }
 
       this.logger.log('Permissions initialized successfully');
     } catch (error) {
@@ -90,18 +97,58 @@ export class SetDataInit implements OnApplicationBootstrap {
           continue;
         }
 
-        const newRole = new this.rolModel({
-          ...role,
-          permissions: permissions.map((permission) => ({
+        /**
+         * Definir permisos activos según el rol
+         */
+        const rolePermissions = permissions.map((permission) => {
+          let isPermissionActive = false;
+
+          /**
+           * ADMINISTRADOR
+           * Todos los permisos activos
+           */
+          if (role.codeRol === 'ADM') {
+            isPermissionActive = true;
+          }
+
+          /**
+           * AUDITOR
+           * Solo READ
+           */
+          if (role.codeRol === 'AUD') {
+            isPermissionActive = permission.action === 'read';
+          }
+
+          /**
+           * USUARIO BÁSICO
+           * CREATE, READ, UPDATE activos
+           * DELETE desactivado
+           */
+          if (role.codeRol === 'USR') {
+            isPermissionActive = ['create', 'read', 'update'].includes(
+              permission.action,
+            );
+          }
+
+          return {
             _id: permission._id,
             name: permission.name,
             description: permission.description,
             action: permission.action,
-            isActive: permission.isActive,
-          })),
+            resource: permission.resource,
+            type: permission.type,
+            isActive: isPermissionActive,
+          };
+        });
+
+        const newRole = new this.rolModel({
+          ...role,
+          permissions: rolePermissions,
         });
 
         await newRole.save();
+
+        this.logger.log(`Role ${role.name} created successfully.`);
       }
 
       this.logger.log('Roles initialized successfully');
@@ -133,6 +180,7 @@ export class SetDataInit implements OnApplicationBootstrap {
     try {
       const company = await this.companyModel
         .findOne({ name: 'BPONET' })
+        .lean()
         .exec();
 
       if (!company) {
@@ -146,13 +194,13 @@ export class SetDataInit implements OnApplicationBootstrap {
       const permissions = await this.permissionsModel.find().exec();
       const roles = await this.rolModel.find().exec();
 
-      const tenantId = String(company._id);
-      const companyId = String(company._id);
+      const tenantId = String(company.id);
+      const companyName = String(company.name);
 
       for (const adminUser of ADMIN_USER) {
         const existingAdmin = await this.userModel
           .findOne({
-            company: companyId,
+            company: companyName,
             $or: [
               ...(adminUser.email ? [{ email: adminUser.email }] : []),
               ...(adminUser.username ? [{ username: adminUser.username }] : []),
@@ -170,7 +218,7 @@ export class SetDataInit implements OnApplicationBootstrap {
         await tenantLocalStorage.run(
           {
             tenantId,
-            companyId,
+            companyId: companyName,
             isSuperAdmin: true,
           },
           async () => {
@@ -179,7 +227,7 @@ export class SetDataInit implements OnApplicationBootstrap {
               modules,
               roles,
               permissions,
-              company: companyId,
+              company: companyName,
               tenantId,
             });
 
@@ -203,78 +251,52 @@ export class SetDataInit implements OnApplicationBootstrap {
 
   async validateIfDataExists() {
     try {
-      const moduleCount = await this.moduleModel.countDocuments().exec();
-      const permissionsCount = await this.permissionsModel
-        .countDocuments()
-        .exec();
-      const rolCount = await this.rolModel.countDocuments().exec();
-      const companyCount = await this.companyModel.countDocuments().exec();
+      /**
+       * Modules
+       */
+      this.logger.log('Validating initial modules...');
+      await this.createInitModules();
 
-      const company = await this.companyModel
+      /**
+       * Permissions
+       */
+      this.logger.log('Validating initial permissions...');
+      await this.createInitPermissions();
+
+      /**
+       * Roles
+       */
+      this.logger.log('Validating initial roles...');
+      await this.createInitRoles();
+
+      /**
+       * Companies
+       */
+      this.logger.log('Validating initial companies...');
+      await this.createInitCompanies();
+
+      /**
+       * Buscar empresa BPONET
+       */
+      const bponetCompany = await this.companyModel
         .findOne({ name: 'BPONET' })
         .exec();
 
-      if (moduleCount === 0) {
-        this.logger.warn('No modules found, creating initial modules...');
-        await this.createInitModules();
-      }
-
-      if (permissionsCount === 0) {
-        this.logger.warn(
-          'No permissions found, creating initial permissions...',
-        );
-        await this.createInitPermissions();
-      }
-
-      if (rolCount === 0) {
-        this.logger.warn('No roles found, creating initial roles...');
-        await this.createInitRoles();
-      }
-
-      if (companyCount === 0) {
-        this.logger.warn('No companies found, creating initial company...');
-        await this.createInitCompanies();
-      }
-
-      const bponetCompany =
-        company || (await this.companyModel.findOne({ name: 'BPONET' }).exec());
-
       if (!bponetCompany) {
         this.logger.error(
-          'BPONET company does not exist after initialization. Admin users were not created.',
+          'BPONET company does not exist after initialization.',
         );
         return;
       }
 
-      let adminExists = false;
+      /**
+       * Crear admins si no existen
+       */
+      await this.createAdminUsers();
 
-      for (const adminUser of ADMIN_USER) {
-        const existingAdmin = await this.userModel
-          .findOne({
-            company: String(bponetCompany._id),
-            $or: [
-              ...(adminUser.email ? [{ email: adminUser.email }] : []),
-              ...(adminUser.username ? [{ username: adminUser.username }] : []),
-            ],
-          })
-          .exec();
-
-        if (existingAdmin) {
-          adminExists = true;
-          break;
-        }
-      }
-
-      if (!adminExists) {
-        this.logger.warn(
-          'BPONET admin user was not found, creating initial admin user...',
-        );
-        await this.createAdminUsers();
-      } else {
-        this.logger.log('BPONET admin user already exists, skipping creation.');
-      }
+      this.logger.log('Initial data validation completed successfully.');
     } catch (error) {
-      this.logger.error('Error validating if data exists', error);
+      this.logger.error('Error validating initial data', error);
     }
   }
 }

@@ -74,7 +74,7 @@ export class AuthService {
       permissions: userDB.permissions,
     };
 
-    console.log('payload', payload);
+    console.log(payload);
 
     const accessToken = this.getJwtToken(
       payload,

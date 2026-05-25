@@ -8,7 +8,8 @@ import { HttpExceptionFilter } from './core/filters/http-exception.filter';
 import { Logger } from 'nestjs-pino';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-
+import { IdempotencyInterceptor } from './core/interceptors/idempotency.interceptor';
+import { IdempotencyService } from './core/idempotency/idempotency.service';
 async function bootstrap() {
   // Antes de crear la app, copia la carpeta de templates si no existe en dist
   const srcTemplates = path.resolve(process.cwd(), 'src', 'mail', 'templates');
@@ -46,12 +47,16 @@ async function bootstrap() {
   app.enableCors({
     origin: configService.get<string>('CORS_ORIGIN', '*'),
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-idempotency-key'],
     credentials: false,
   });
 
   // Global Interceptors and Filters
-  app.useGlobalInterceptors(new ResponseInterceptor());
+  const idempotencyService = app.get(IdempotencyService);
+  app.useGlobalInterceptors(
+    new IdempotencyInterceptor(idempotencyService),
+    new ResponseInterceptor(),
+  );
   app.useGlobalFilters(new HttpExceptionFilter());
 
   // Swagger/OpenAPI Configuración

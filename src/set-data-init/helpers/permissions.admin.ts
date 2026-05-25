@@ -37,6 +37,6 @@ export const PERMISSIONS = [
     type: 'global',
     created: new Date(),
     modified: new Date(),
-    isActive: false,
+    isActive: true,
   },
 ];

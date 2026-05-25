@@ -21,6 +21,7 @@ import { MailModule } from './mail/mail.module';
 import { LoggerModule } from 'nestjs-pino';
 import { envValidationSchema } from './core/config/env.validation';
 import { TenantMiddleware } from './core/database/tenant.middleware';
+import { IdempotencyModule } from './core/idempotency/idempotency.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { TenantMiddleware } from './core/database/tenant.middleware';
     StrategyJwtGlobalModule,
     DatabaseModule,
     SetDataInitModule,
+    IdempotencyModule,
     UsersModule,
     AuthModule,
     RolesModule,
