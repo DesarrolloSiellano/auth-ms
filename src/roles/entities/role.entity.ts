@@ -1,5 +1,7 @@
 import { Schema, model, Document } from 'mongoose';
 import moment from 'moment';
+import { TenantBaseSchema, addTenantIndexes } from 'src/core/database/tenant.base.schema';
+import { tenantPlugin } from 'src/core/database/tenant.plugin';
 
 
 
@@ -23,6 +25,8 @@ interface Permission  {
 
 
 export interface Rol extends Document {
+  tenantId: string;
+  company: string;
   name: string;
   codeRol: string;
   description: string;
@@ -39,8 +43,9 @@ export interface Rol extends Document {
 }
 
 export const RolSchema = new Schema({
-    name: { type: String, unique: true, required: [true, 'The name field is required'] },
-    codeRol: { type: String, unique: true, required: [true, 'The code field is required'] },
+    ...TenantBaseSchema,
+    name: { type: String, required: [true, 'The name field is required'] },
+    codeRol: { type: String, required: [true, 'The code field is required'] },
     description: { type: String, required: [true, 'The description field is required'] },
     created: { type: Date, default: Date.now },
     modified: { type: Date },
@@ -59,6 +64,15 @@ export const RolSchema = new Schema({
       isActive: { type: Boolean, default: true },
     }],
 });
+
+// Registrar plugin de multi-tenant automático
+RolSchema.plugin(tenantPlugin);
+
+// Configuración de índices compuestos multi-tenant para rendimiento y aislamiento de unicidad
+RolSchema.index({ company: 1, name: 1 }, { unique: true });
+RolSchema.index({ company: 1, codeRol: 1 }, { unique: true });
+RolSchema.index({ company: 1, description: 1 });
+addTenantIndexes(RolSchema, ['codeRol']);
 
 
 export const RolModel = model<Rol>('Rol', RolSchema);

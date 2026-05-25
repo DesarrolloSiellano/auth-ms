@@ -6,9 +6,13 @@ import * as bcrypt from 'bcrypt';
 import { Permission } from 'src/permissions/entities/permission.entity';
 import { Rol } from 'src/roles/entities/role.entity';
 import { Module } from 'src/modules/entities/module.entity';
+import { TenantBaseSchema, addTenantIndexes } from 'src/core/database/tenant.base.schema';
+import { tenantPlugin } from 'src/core/database/tenant.plugin';
 
 
 export interface User extends Document {
+  tenantId: string;
+  company: string;
   name: string;
   lastName: string;
   phone: string;
@@ -21,7 +25,6 @@ export interface User extends Document {
   isAdmin: boolean;
   isNewUser: boolean;
   isSuperAdmin: boolean;
-  company: string;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
   modules: Module[];
@@ -52,7 +55,6 @@ export const UserSchema = new Schema({
   },
   email: {
     type: String,
-    unique: true,
     required: [true, 'The email field is required'],
     match: [/.+@.+\..+/, 'Please enter a valid email'],
   },
@@ -112,7 +114,7 @@ export const UserSchema = new Schema({
       ],
     },
   ],
-  company: { type: String, index: true },
+  ...TenantBaseSchema,
   created: { type: Date, default: Date.now },
   modified: { type: Date, default: Date.now },
   isActived: { type: Boolean, default: true },
@@ -129,6 +131,16 @@ export const UserSchema = new Schema({
   updatedAtHour: { type: String, default: moment().format('HH:mm:ss') },
   // Assuming Role is a separate entity
 });
+
+// Registrar plugin de multi-tenant automático
+UserSchema.plugin(tenantPlugin);
+
+// Configuración de índices compuestos multi-tenant para rendimiento y aislamiento de unicidad
+UserSchema.index({ company: 1, email: 1 }, { unique: true });
+UserSchema.index({ company: 1, name: 1, lastName: 1 });
+UserSchema.index({ company: 1, username: 1 });
+UserSchema.index({ company: 1, phone: 1 });
+addTenantIndexes(UserSchema, ['email']);
 
 UserSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next(); // Si no se ha modificado la contraseña, continúa

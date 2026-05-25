@@ -1,8 +1,11 @@
 import moment from 'moment';
 import { Schema, model, Document } from 'mongoose';
+import { TenantBaseSchema, addTenantIndexes } from 'src/core/database/tenant.base.schema';
+import { tenantPlugin } from 'src/core/database/tenant.plugin';
 
 
 export interface Session extends Document {
+    tenantId: string;
     user: string;
     idUser: string;
     email: string;
@@ -33,12 +36,12 @@ export const SessionSchema = new Schema({
     user: { type: String },
     idUser: { type: String },
     email: { type: String,  },
-    company: { type: String,  },
+    ...TenantBaseSchema,
     expires: { type: String, },
     created: { type: String, default: moment().format('YYYY-MM-DD HH:mm:ss') },
     modified: { type: String, default: moment().format('YYYY-MM-DD HH:mm:ss') },
     isActive: { type: Boolean, default: true },
-    refreshToken: { type: String, index: true },
+    refreshToken: { type: String },
     ip: { type: String },
     os: { type: String },
     os_version: { type: String },
@@ -53,5 +56,13 @@ export const SessionSchema = new Schema({
     dateModified: { type: String, default: moment().format('YYYY-MM-DD') },
     hourModified: { type: String, default: moment().format('HH:mm:ss') },
 });
+
+// Registrar plugin de multi-tenant automático
+SessionSchema.plugin(tenantPlugin);
+
+// Configuración de índices compuestos multi-tenant para rendimiento y aislamiento de unicidad
+SessionSchema.index({ company: 1, user: 1 });
+SessionSchema.index({ company: 1, refreshToken: 1 });
+addTenantIndexes(SessionSchema, ['refreshToken']);
 
 export const SessionModel = model<Session>('sessions', SessionSchema);

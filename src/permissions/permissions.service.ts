@@ -36,8 +36,8 @@ export class PermissionsService {
   }
 
   async findAll() {
-    const permissions = await this.permissionModel.find().exec();
-    if (!permissions) {
+    const permissions = await this.permissionModel.find().lean().exec();
+    if (!permissions || permissions.length === 0) {
       throw new NotFoundException('No permissions found');
     }
     return permissions;
@@ -55,11 +55,17 @@ export class PermissionsService {
     }
     const skipNumber = from && from >= 0 ? from : 0;
     const limitNumber = limit && limit > 0 ? limit : 100;
-    const docs = await this.permissionModel
-      .find(query)
-      .skip(skipNumber)
-      .limit(limitNumber);
-    const totalData = await this.permissionModel.countDocuments(query);
+
+    const [docs, totalData] = await Promise.all([
+      this.permissionModel
+        .find(query)
+        .select('name description action resource type isActive')
+        .skip(skipNumber)
+        .limit(limitNumber)
+        .lean()
+        .exec(),
+      this.permissionModel.countDocuments(query).exec(),
+    ]);
     
     return {
       message: 'Permissions found',
@@ -71,7 +77,7 @@ export class PermissionsService {
   }
 
   async findOne(id: string) {
-    const permission = await this.permissionModel.findById(id).exec();
+    const permission = await this.permissionModel.findById(id).lean().exec();
     if (!permission) {
       throw new NotFoundException(`Permission with ID ${id} not found`);
     }

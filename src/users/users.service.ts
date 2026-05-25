@@ -69,7 +69,7 @@ export class UsersService {
       query.company = user.company;
     }
 
-    const users = await this.userModel.find(query).exec();
+    const users = await this.userModel.find(query).lean().exec();
     if (!users || users.length === 0) {
       throw new NotFoundException('No users found');
     }
@@ -115,8 +115,14 @@ export class UsersService {
     const limitNumber = limit && limit > 0 ? limit : 100;
 
     const [docs, totalData] = await Promise.all([
-      this.userModel.find(query).skip(skipNumber).limit(limitNumber),
-      this.userModel.countDocuments(query),
+      this.userModel
+        .find(query)
+        .select('name lastName email phone company isActived isAdmin isSuperAdmin isNewUser created createdDate')
+        .skip(skipNumber)
+        .limit(limitNumber)
+        .lean()
+        .exec(),
+      this.userModel.countDocuments(query).exec(),
     ]);
 
     return {
@@ -136,8 +142,14 @@ export class UsersService {
 
     const skip = (page - 1) * limit;
     const [users, totalData] = await Promise.all([
-      this.userModel.find(query).skip(skip).limit(limit).exec(),
-      this.userModel.countDocuments(query),
+      this.userModel
+        .find(query)
+        .select('name lastName email phone company isActived isAdmin isSuperAdmin isNewUser created createdDate')
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .exec(),
+      this.userModel.countDocuments(query).exec(),
     ]);
 
     return {
@@ -152,7 +164,7 @@ export class UsersService {
 
   // Búsqueda simple por ID
   async findOne(id: string) {
-    const user = await this.userModel.findById(id).exec();
+    const user = await this.userModel.findById(id).lean().exec();
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
@@ -187,7 +199,7 @@ export class UsersService {
       query.company = user.company;
     }
 
-    const users = await this.userModel.find(query).exec();
+    const users = await this.userModel.find(query).lean().exec();
 
     if (!users || users.length === 0) {
       throw new NotFoundException('No users found for given date range');

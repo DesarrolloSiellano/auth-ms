@@ -9,6 +9,7 @@ export interface JwtPayload {
     date_joined: Date;
     isActived: boolean;
     isAdmin: boolean;
+    isSuperAdmin?: boolean;
     company: string;
     modules: any[];
     roles: any[];

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import * as path from 'path';
 import { AppController } from './app.controller';
@@ -20,6 +20,7 @@ import { CompaniesModule } from './companies/companies.module';
 import { MailModule } from './mail/mail.module';
 import { LoggerModule } from 'nestjs-pino';
 import { envValidationSchema } from './core/config/env.validation';
+import { TenantMiddleware } from './core/database/tenant.middleware';
 
 
 
@@ -86,4 +87,10 @@ import { envValidationSchema } from './core/config/env.validation';
   providers: [AppService],
   exports: [MailModule],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(TenantMiddleware)
+      .forRoutes('*');
+  }
+}
