@@ -10,7 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
 import express from 'express';
 import { MessagePattern, Payload } from '@nestjs/microservices';
@@ -114,6 +114,7 @@ export class AuthController {
         }
       } catch (e) {
         // En caso de que redirectUri no sea una URL válida, ignorar redirección
+        console.log('Error redirectUri', e);
       }
     }
 
@@ -237,7 +238,7 @@ export class AuthController {
     },
   })
   @ApiBearerAuth()
-  async validateUser(@Req() req: any) {
+  validateUser(@Req() req: any) {
     const user = req.user as UserPayload;
 
     return {

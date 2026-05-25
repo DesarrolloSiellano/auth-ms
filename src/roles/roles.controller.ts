@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Body,
-  Patch,
   Param,
   Delete,
   Put,
@@ -103,16 +102,10 @@ export class RolesController {
     @Query('from') from?: number,
     @Query('limit') limit?: number,
     @Query('global') global?: string,
-    @Query('filters') filters?: string,
   ) {
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limitNumber = limit !== undefined ? Number(limit) : 10;
-    return this.rolesService.findByPage(
-      fromNumber,
-      limitNumber,
-      global,
-      filters,
-    );
+    return this.rolesService.findByPage(fromNumber, limitNumber, global);
   }
 
   @Get(':id')

@@ -109,18 +109,22 @@ export class AuthService {
     const newSession = new this.sessionModel(session);
     await newSession.save();
 
-    this.mailService.sendEmail({
-      to: login.email,
-      subject: 'Inicio de sesión - BpoNet',
-      template: 'session',
-      context: {
-        name: session.name,
-        platform_name: 'BpoNet',
-        os: meta?.os || '',
-        browser: meta?.browser || '',
-        user_agent: meta?.user_agent || '',
-      },
-    });
+    this.mailService
+      .sendEmail({
+        to: login.email,
+        subject: 'Inicio de sesión - BpoNet',
+        template: 'session',
+        context: {
+          name: session.name,
+          platform_name: 'BpoNet',
+          os: meta?.os || '',
+          browser: meta?.browser || '',
+          user_agent: meta?.user_agent || '',
+        },
+      })
+      .catch((error) => {
+        console.log(error, error);
+      });
 
     return {
       message: 'Login successful',
@@ -137,9 +141,9 @@ export class AuthService {
   async refreshAccessToken(refreshToken: string) {
     try {
       // 1. Verify Refresh Token
-      const payload = this.jwtService.verify(refreshToken, {
+      /*  const payload = this.jwtService.verify(refreshToken, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      });
+      }); */
 
       // 2. Find Session and User
       const session = await this.sessionModel
@@ -184,6 +188,7 @@ export class AuthService {
         payload: newPayload,
       };
     } catch (error) {
+      console.log(error, error);
       throw new ForbiddenException('Invalid refresh token');
     }
   }

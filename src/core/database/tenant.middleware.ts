@@ -60,6 +60,7 @@ export class TenantMiddleware implements NestMiddleware {
       );
       return JSON.parse(decodedJson);
     } catch (error) {
+      console.log('error decodeJwt', error);
       return null;
     }
   }

@@ -114,16 +114,10 @@ export class ModulesController {
     @Query('from') from?: number,
     @Query('limit') limit?: number,
     @Query('global') global?: string,
-    @Query('filters') filters?: string,
   ) {
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limiteNumber = limit !== undefined ? Number(limit) : 10;
-    return this.modulesService.findByPage(
-      fromNumber,
-      limiteNumber,
-      global,
-      filters,
-    );
+    return this.modulesService.findByPage(fromNumber, limiteNumber, global);
   }
 
   @Get(':id')

@@ -1,15 +1,8 @@
 import { Schema, model, Document } from 'mongoose';
 import { Rol } from 'src/roles/entities/role.entity';
 import moment from 'moment';
-import {
-  TenantBaseSchema,
-  addTenantIndexes,
-} from 'src/core/database/tenant.base.schema';
-import { tenantPlugin } from 'src/core/database/tenant.plugin';
 
 export interface Permission extends Document {
-  tenantId: string;
-  company: string;
   name: string;
   description: string;
   action: string; // `create`, `read`, `update`, `delete`, etc.
@@ -19,16 +12,15 @@ export interface Permission extends Document {
   rol?: Rol; // Relación con el Rol
   created: Date;
   modified: Date;
-  dateCreated?: String;
-  hourCreated?: String;
-  dateModified?: String;
-  hourModified?: String;
-  idUserModified?: String;
+  dateCreated?: string;
+  hourCreated?: string;
+  dateModified?: string;
+  hourModified?: string;
+  idUserModified?: string;
   isActive: boolean;
 }
 
 export const PermissionSchema = new Schema({
-  ...TenantBaseSchema,
   name: { type: String, required: true },
   description: { type: String, required: true },
   action: { type: String, required: true },
@@ -47,13 +39,10 @@ export const PermissionSchema = new Schema({
 });
 
 // Registrar plugin de multi-tenant automático
-PermissionSchema.plugin(tenantPlugin);
 
-// Configuración de índices compuestos multi-tenant para rendimiento y aislamiento de unicidad
-PermissionSchema.index({ company: 1, name: 1 }, { unique: true });
-PermissionSchema.index({ company: 1, action: 1 });
-PermissionSchema.index({ company: 1, resource: 1 });
-addTenantIndexes(PermissionSchema, ['name']);
+PermissionSchema.index({ name: 1 }, { unique: true });
+PermissionSchema.index({ action: 1 });
+PermissionSchema.index({ resource: 1 });
 
 export const PermissionModel = model<Permission>(
   'permissions',

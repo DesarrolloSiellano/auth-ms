@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Body,
-  Patch,
   Put,
   Param,
   Delete,
@@ -104,16 +103,10 @@ export class CompaniesController {
     @Query('from') from?: number,
     @Query('limit') limit?: number,
     @Query('global') global?: string,
-    @Query('filters') filters?: string,
   ) {
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limitNumber = limit !== undefined ? Number(limit) : 10;
-    return this.companiesService.findByPage(
-      fromNumber,
-      limitNumber,
-      global,
-      filters,
-    );
+    return this.companiesService.findByPage(fromNumber, limitNumber, global);
   }
 
   @Get('findByAutoComplete')

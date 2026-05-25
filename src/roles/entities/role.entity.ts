@@ -1,10 +1,5 @@
 import { Schema, model, Document } from 'mongoose';
 import moment from 'moment';
-import {
-  TenantBaseSchema,
-  addTenantIndexes,
-} from 'src/core/database/tenant.base.schema';
-import { tenantPlugin } from 'src/core/database/tenant.plugin';
 
 interface Permission {
   name: string;
@@ -16,11 +11,11 @@ interface Permission {
   rol?: Rol; // Relación con el Rol
   created: Date;
   modified: Date;
-  dateCreated?: String;
-  hourCreated?: String;
-  dateModified?: String;
-  hourModified?: String;
-  idUserModified?: String;
+  dateCreated?: string;
+  hourCreated?: string;
+  dateModified?: string;
+  hourModified?: string;
+  idUserModified?: string;
   isActive: boolean;
 }
 
@@ -33,17 +28,16 @@ export interface Rol extends Document {
   created: Date;
   modiefied: Date;
   isActive: boolean;
-  dateCreated?: String;
-  hourCreated?: String;
-  dateModified?: String;
-  hourModified?: String;
+  dateCreated?: string;
+  hourCreated?: string;
+  dateModified?: string;
+  hourModified?: string;
   idUserModified?: string;
   isInheritPermissions: boolean;
   permissions: Permission[];
 }
 
 export const RolSchema = new Schema({
-  ...TenantBaseSchema,
   name: { type: String, required: [true, 'The name field is required'] },
   codeRol: { type: String, required: [true, 'The code field is required'] },
   description: {
@@ -71,12 +65,10 @@ export const RolSchema = new Schema({
 });
 
 // Registrar plugin de multi-tenant automático
-RolSchema.plugin(tenantPlugin);
 
 // Configuración de índices compuestos multi-tenant para rendimiento y aislamiento de unicidad
-RolSchema.index({ company: 1, name: 1 }, { unique: true });
-RolSchema.index({ company: 1, codeRol: 1 }, { unique: true });
-RolSchema.index({ company: 1, description: 1 });
-addTenantIndexes(RolSchema, ['codeRol']);
+RolSchema.index({ name: 1 }, { unique: true });
+RolSchema.index({ codeRol: 1 }, { unique: true });
+RolSchema.index({ description: 1 });
 
 export const RolModel = model<Rol>('Rol', RolSchema);

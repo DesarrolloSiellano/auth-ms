@@ -40,7 +40,7 @@ export class CompaniesService {
     return companies;
   }
 
-  async findByPage(from?: number, limit?: number, global?: any, filters?: any) {
+  async findByPage(from?: number, limit?: number, global?: any) {
     const query: any = {};
 
     if (global) {

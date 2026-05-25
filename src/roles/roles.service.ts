@@ -4,7 +4,6 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Rol } from './entities/role.entity';
-import { Types } from 'mongoose';
 
 @Injectable()
 export class RolesService {
@@ -46,7 +45,7 @@ export class RolesService {
     return role;
   }
 
-  async findByPage(from?: number, limit?: number, global?: any, filters?: any) {
+  async findByPage(from?: number, limit?: number, global?: any) {
     const query: any = {};
     if (global) {
       query.$or = [

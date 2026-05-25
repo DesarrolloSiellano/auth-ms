@@ -16,7 +16,7 @@ const templatesPath =
     ConfigModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         transport: {
           host: configService.get<string>('EMAIL_HOST', 'smtp.gmail.com'),
           port: configService.get<number>('EMAIL_PORT', 587),
