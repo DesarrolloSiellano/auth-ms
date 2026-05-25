@@ -62,7 +62,9 @@ export class ModulesService {
     const docs = await this.moduleModel
       .find(query)
       .skip(skipNumber)
-      .limit(limitNumber);
+      .limit(limitNumber)
+      .lean()
+      .exec();
     const totalData = await this.moduleModel.countDocuments(query);
 
     return {

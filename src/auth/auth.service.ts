@@ -172,6 +172,7 @@ export class AuthService {
         isSuperAdmin: user.isSuperAdmin,
         isNewUser: user.isNewUser,
         company: user.company,
+        tenantId: user.tenantId,
         modules: user.modules,
         roles: user.roles,
         permissions: user.permissions,

@@ -111,9 +111,6 @@ export class UsersService {
     const [docs, totalData] = await Promise.all([
       this.userModel
         .find(query)
-        .select(
-          'name lastName email phone company isActived isAdmin isSuperAdmin isNewUser created createdDate',
-        )
         .skip(skipNumber)
         .limit(limitNumber)
         .lean()
@@ -138,17 +135,11 @@ export class UsersService {
 
     const skip = (page - 1) * limit;
     const [users, totalData] = await Promise.all([
-      this.userModel
-        .find(query)
-        .select(
-          'name lastName email phone company isActived isAdmin isSuperAdmin isNewUser created createdDate',
-        )
-        .skip(skip)
-        .limit(limit)
-        .lean()
-        .exec(),
+      this.userModel.find(query).skip(skip).limit(limit).lean().exec(),
       this.userModel.countDocuments(query).exec(),
     ]);
+
+    console.log(user);
 
     return {
       data: users,
@@ -217,11 +208,13 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto) {
     const { ...updateData } = updateUserDto;
 
-    console.log('DTO', UpdateUserDto);
+    console.log('DTO', updateUserDto);
 
     const updatedUser = await this.userModel
       .findByIdAndUpdate(id, updateData, { new: true })
       .exec();
+
+    console.log('Updated User', updatedUser);
 
     if (!updatedUser) {
       throw new NotFoundException(`User with ID ${id} not found`);

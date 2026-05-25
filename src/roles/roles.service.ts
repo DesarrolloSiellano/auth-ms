@@ -62,7 +62,9 @@ export class RolesService {
     const [docs, totalData] = await Promise.all([
       this.rolModel
         .find(query)
-        .select('name codeRol description isActive dateCreated hourCreated')
+        .select(
+          'name codeRol description isActive dateCreated hourCreated permissions',
+        )
         .skip(skipNumber)
         .limit(limitNumber)
         .lean()
