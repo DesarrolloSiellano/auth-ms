@@ -1,6 +1,5 @@
-
-
-export const ADMIN_USER = [{
+export const ADMIN_USER = [
+  {
     name: 'admin',
     lastName: 'admin',
     email: 'admin@admin.com',
@@ -13,5 +12,5 @@ export const ADMIN_USER = [{
     isSuperAdmin: true,
     isNewUser: true,
     phone: '1234567890',
-}];
-
+  },
+];

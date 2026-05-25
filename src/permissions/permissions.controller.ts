@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Body,
-  Patch,
   Param,
   Delete,
   Put,
@@ -104,14 +103,11 @@ export class PermissionsController {
     @Query('from') from?: number,
     @Query('limit') limit?: number,
     @Query('global') global?: string,
-    @Query('filters') filters?: string,
   ) {
-    
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limiteNumber = limit !== undefined ? Number(limit) : 10;
-    return this.permissionsService.findByPage(fromNumber, limiteNumber, global, filters);
+    return this.permissionsService.findByPage(fromNumber, limiteNumber, global);
   }
-
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener un permiso por ID' })

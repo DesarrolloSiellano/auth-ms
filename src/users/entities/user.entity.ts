@@ -6,9 +6,11 @@ import * as bcrypt from 'bcrypt';
 import { Permission } from 'src/permissions/entities/permission.entity';
 import { Rol } from 'src/roles/entities/role.entity';
 import { Module } from 'src/modules/entities/module.entity';
-import { TenantBaseSchema, addTenantIndexes } from 'src/core/database/tenant.base.schema';
+import {
+  TenantBaseSchema,
+  addTenantIndexes,
+} from 'src/core/database/tenant.base.schema';
 import { tenantPlugin } from 'src/core/database/tenant.plugin';
-
 
 export interface User extends Document {
   tenantId: string;
@@ -57,6 +59,8 @@ export const UserSchema = new Schema({
     type: String,
     required: [true, 'The email field is required'],
     match: [/.+@.+\..+/, 'Please enter a valid email'],
+    lowercase: true,
+    unique: true,
   },
   phone: { type: String, required: false, trim: true },
   //username: { type: String, unique: true, },
@@ -149,6 +153,4 @@ UserSchema.pre('save', async function (next) {
   next();
 });
 
-
 export const UserModel = model<User>('User', UserSchema);
-

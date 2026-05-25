@@ -17,7 +17,7 @@ export class MailService {
   constructor(
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
   async sendEmail(options: SendEmailOptions): Promise<void> {
     this.logger.log(

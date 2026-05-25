@@ -12,6 +12,7 @@ import { Module } from 'src/modules/entities/module.entity';
 import { ADMIN_MODULE } from './helpers/modules.admin';
 import { Company } from 'src/companies/entities/company.entity';
 import { ADMIN_COMPANY } from './helpers/companies.admin';
+import { tenantLocalStorage } from 'src/core/database/tenant.context';
 
 @Injectable()
 export class SetDataInit implements OnApplicationBootstrap {
@@ -24,7 +25,7 @@ export class SetDataInit implements OnApplicationBootstrap {
     @InjectModel('User') private readonly userModel: Model<User>,
     @InjectModel('Module') private readonly moduleModel: Model<Module>,
     @InjectModel('Company') private readonly companyModel: Model<Company>,
-  ) { }
+  ) {}
 
   async createInitModules() {
     try {
@@ -48,6 +49,8 @@ export class SetDataInit implements OnApplicationBootstrap {
         // Crea un nuevo objeto rol pasando las propiedades del rol y asignando permisos solo con _id
         const newRole = new this.rolModel({
           ...role,
+          company: 'BPONET',
+          tenantId: '0000000',
           permissions: permissions.map((permission) => ({
             _id: permission._id,
             name: permission.name,
@@ -74,7 +77,14 @@ export class SetDataInit implements OnApplicationBootstrap {
 
   async createInitPermissions() {
     try {
-      await this.permissionsModel.insertMany(PERMISSIONS, { ordered: false });
+      const permissionsWithTenant = PERMISSIONS.map((p) => ({
+        ...p,
+        company: 'BPONET',
+        tenantId: '0000000',
+      }));
+      await this.permissionsModel.insertMany(permissionsWithTenant, {
+        ordered: false,
+      });
       this.logger.log('Permissions initialized successfully');
     } catch (error) {
       if (error.code === 11000) {
@@ -103,7 +113,9 @@ export class SetDataInit implements OnApplicationBootstrap {
       const modules = await this.moduleModel.find().exec();
       const permissions = await this.permissionsModel.find().exec();
       const roles = await this.rolModel.find().exec();
-      const company = await this.companyModel.findOne({ name: 'BPONET' }).exec();
+      const company = await this.companyModel
+        .findOne({ name: 'BPONET' })
+        .exec();
 
       // Recorrer cada administrador en ADMIN_USER y crear documento en DB con los subdocumentos
       for (const adminUser of ADMIN_USER) {
@@ -112,11 +124,14 @@ export class SetDataInit implements OnApplicationBootstrap {
           modules: modules,
           roles: roles,
           permissions: permissions,
-          company: company ? company.name : '',
+          company: company ? company.id : '0000000',
+          tenantId: company ? company.id : '0000000',
         });
 
         await admin.save();
-        this.logger.log(`Admin user ${adminUser.email || adminUser.username} created successfully.`);
+        this.logger.log(
+          `Admin user ${adminUser.email || adminUser.username} created successfully.`,
+        );
       }
     } catch (error) {
       this.logger.error('Error creating admin users', error);
@@ -124,9 +139,13 @@ export class SetDataInit implements OnApplicationBootstrap {
     }
   }
 
-
   async onApplicationBootstrap() {
-    await this.validateIfDataExists();
+    await tenantLocalStorage.run(
+      { tenantId: '0000000', companyId: 'BPONET', isSuperAdmin: true },
+      async () => {
+        await this.validateIfDataExists();
+      },
+    );
   }
 
   async validateIfDataExists() {

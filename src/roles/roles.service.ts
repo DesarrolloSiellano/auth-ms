@@ -8,7 +8,6 @@ import { Types } from 'mongoose';
 
 @Injectable()
 export class RolesService {
-
   constructor(@InjectModel('Rol') private readonly rolModel: Model<Rol>) {}
 
   async create(createRoleDto: CreateRoleDto) {
@@ -108,5 +107,4 @@ export class RolesService {
     }
     return deletedRole;
   }
-
 }

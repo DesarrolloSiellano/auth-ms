@@ -22,8 +22,6 @@ import { LoggerModule } from 'nestjs-pino';
 import { envValidationSchema } from './core/config/env.validation';
 import { TenantMiddleware } from './core/database/tenant.middleware';
 
-
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -33,15 +31,18 @@ import { TenantMiddleware } from './core/database/tenant.middleware';
     }),
     LoggerModule.forRoot({
       pinoHttp: {
-        timestamp: () => `,"time":"${new Intl.DateTimeFormat('sv-SE', {
-          timeZone: 'America/Bogota',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }).format(new Date()).replace(' ', 'T')}"`,
+        timestamp: () =>
+          `,"time":"${new Intl.DateTimeFormat('sv-SE', {
+            timeZone: 'America/Bogota',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          })
+            .format(new Date())
+            .replace(' ', 'T')}"`,
         transport: {
           targets: [
             {
@@ -81,7 +82,7 @@ import { TenantMiddleware } from './core/database/tenant.middleware';
     ModulesModule,
     SessionsModule,
     CompaniesModule,
-    MailModule
+    MailModule,
   ],
   controllers: [AppController],
   providers: [AppService],
@@ -89,8 +90,6 @@ import { TenantMiddleware } from './core/database/tenant.middleware';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(TenantMiddleware)
-      .forRoutes('*');
+    consumer.apply(TenantMiddleware).forRoutes('*');
   }
 }

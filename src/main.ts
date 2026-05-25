@@ -12,12 +12,19 @@ import * as path from 'path';
 async function bootstrap() {
   // Antes de crear la app, copia la carpeta de templates si no existe en dist
   const srcTemplates = path.resolve(process.cwd(), 'src', 'mail', 'templates');
-  const distTemplates = path.resolve(process.cwd(), 'dist', 'mail', 'templates');
+  const distTemplates = path.resolve(
+    process.cwd(),
+    'dist',
+    'mail',
+    'templates',
+  );
   const exists = await fsExtra.pathExists(distTemplates);
   if (!exists) {
     try {
       await fsExtra.copy(srcTemplates, distTemplates);
-      console.log('Templates copiados desde src/mail/templates a dist/mail/templates');
+      console.log(
+        'Templates copiados desde src/mail/templates a dist/mail/templates',
+      );
     } catch (err) {
       console.error('Error copiando templates:', err);
       // Opcional: decidir si abortar arranque o continuar
@@ -25,8 +32,6 @@ async function bootstrap() {
   } else {
     console.log('Templates ya existen en dist/mail/templates');
   }
-
-
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const logger = app.get(Logger);
@@ -67,7 +72,7 @@ La documentación Swagger incluye:
 - La descripción y ejemplos completos para todos los endpoints REST.  
 - Documentación especial (a través de endpoints de solo lectura) que describe los patrones y payloads TCP disponibles para microservicios, como referencia para desarrolladores e integradores.
 
-Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo mejor de los APIs REST para consumo público y microservicios TCP para comunicación interna.`
+Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo mejor de los APIs REST para consumo público y microservicios TCP para comunicación interna.`,
     )
     .addBearerAuth({
       type: 'http',
@@ -76,7 +81,6 @@ Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo m
       description: 'Ingrese el token JWT en formato Bearer',
     })
     .build();
-
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   document.servers = [{ url: '/auth/' }];

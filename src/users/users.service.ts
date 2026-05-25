@@ -1,14 +1,10 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { MailService } from 'src/mail/mail.service';
-import * as crypto from 'crypto';
 import * as generatePassword from 'generate-password';
 
 @Injectable()
@@ -16,10 +12,9 @@ export class UsersService {
   constructor(
     @InjectModel('User') private readonly userModel: Model<User>,
     private readonly mailService: MailService,
-  ) { }
+  ) {}
 
   async create(createUserDto: CreateUserDto) {
-
     // Generar contraseña temporal segura
     const tempPassword = generatePassword.generate({
       length: 12,
@@ -38,19 +33,24 @@ export class UsersService {
     const newUser = new this.userModel(userData);
     const result = await newUser.save();
 
-
-    this.mailService.sendEmail({
-      to: result.email,
-      subject: 'Bienvenido a BpoNet - Activa tu cuenta',
-      template: 'welcome',
-      context: {
-        name: result.name,
-        platform_name: 'BpoNet',
-        username: result.email,
-        password: tempPassword,
-        login_url: userData.redirectUri ? userData.redirectUri : 'https://app.bponet.com.co'
-      },
-    });
+    this.mailService
+      .sendEmail({
+        to: result.email,
+        subject: 'Bienvenido a BpoNet - Activa tu cuenta',
+        template: 'welcome',
+        context: {
+          name: result.name,
+          platform_name: 'BpoNet',
+          username: result.email,
+          password: tempPassword,
+          login_url: userData.redirectUri
+            ? userData.redirectUri
+            : 'https://app.bponet.com.co',
+        },
+      })
+      .catch((error: any) => {
+        console.log('Error sending email:', error);
+      });
 
     return {
       data: result,
@@ -76,13 +76,7 @@ export class UsersService {
     return users;
   }
 
-  async findByPage(
-    user?: any,
-    from?: number,
-    limit?: number,
-    global?: any,
-    filters?: any,
-  ) {
+  async findByPage(user?: any, from?: number, limit?: number, global?: any) {
     const { isSuperAdmin } = user;
     const query: any = {};
 
@@ -117,7 +111,9 @@ export class UsersService {
     const [docs, totalData] = await Promise.all([
       this.userModel
         .find(query)
-        .select('name lastName email phone company isActived isAdmin isSuperAdmin isNewUser created createdDate')
+        .select(
+          'name lastName email phone company isActived isAdmin isSuperAdmin isNewUser created createdDate',
+        )
         .skip(skipNumber)
         .limit(limitNumber)
         .lean()
@@ -144,7 +140,9 @@ export class UsersService {
     const [users, totalData] = await Promise.all([
       this.userModel
         .find(query)
-        .select('name lastName email phone company isActived isAdmin isSuperAdmin isNewUser created createdDate')
+        .select(
+          'name lastName email phone company isActived isAdmin isSuperAdmin isNewUser created createdDate',
+        )
         .skip(skip)
         .limit(limit)
         .lean()
@@ -217,7 +215,9 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    const { password, company, ...updateData } = updateUserDto;
+    const { ...updateData } = updateUserDto;
+
+    console.log('DTO', UpdateUserDto);
 
     const updatedUser = await this.userModel
       .findByIdAndUpdate(id, updateData, { new: true })

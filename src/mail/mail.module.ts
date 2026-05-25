@@ -5,9 +5,10 @@ import * as path from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailService } from './mail.service';
 
-const templatesPath = process.env.NODE_ENV === 'production'
-  ? path.resolve(__dirname, 'templates')       // producción usa dist/mail/templates
-  : path.resolve(__dirname, '..', 'mail', 'templates'); // desarrollo usa src/mail/templates
+const templatesPath =
+  process.env.NODE_ENV === 'production'
+    ? path.resolve(__dirname, 'templates') // producción usa dist/mail/templates
+    : path.resolve(__dirname, '..', 'mail', 'templates'); // desarrollo usa src/mail/templates
 
 @Global()
 @Module({
@@ -39,5 +40,4 @@ const templatesPath = process.env.NODE_ENV === 'production'
   providers: [MailService],
   exports: [MailerModule],
 })
-export class MailModule { }
-
+export class MailModule {}

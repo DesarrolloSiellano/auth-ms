@@ -1,7 +1,10 @@
 import { Schema, model, Document } from 'mongoose';
 import { Rol } from 'src/roles/entities/role.entity';
 import moment from 'moment';
-import { TenantBaseSchema, addTenantIndexes } from 'src/core/database/tenant.base.schema';
+import {
+  TenantBaseSchema,
+  addTenantIndexes,
+} from 'src/core/database/tenant.base.schema';
 import { tenantPlugin } from 'src/core/database/tenant.plugin';
 
 export interface Permission extends Document {
@@ -52,4 +55,7 @@ PermissionSchema.index({ company: 1, action: 1 });
 PermissionSchema.index({ company: 1, resource: 1 });
 addTenantIndexes(PermissionSchema, ['name']);
 
-export const PermissionModel = model<Permission>('permissions', PermissionSchema);
+export const PermissionModel = model<Permission>(
+  'permissions',
+  PermissionSchema,
+);

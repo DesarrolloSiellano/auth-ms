@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Permission } from './entities/permission.entity';
@@ -43,7 +40,7 @@ export class PermissionsService {
     return permissions;
   }
 
-  async findByPage(from?: number, limit?: number, global?: any, filters?: any) {
+  async findByPage(from?: number, limit?: number, global?: any) {
     const query: any = {};
     if (global) {
       query.$or = [
@@ -66,7 +63,7 @@ export class PermissionsService {
         .exec(),
       this.permissionModel.countDocuments(query).exec(),
     ]);
-    
+
     return {
       message: 'Permissions found',
       data: docs,

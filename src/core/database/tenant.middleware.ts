@@ -55,7 +55,9 @@ export class TenantMiddleware implements NestMiddleware {
       const parts = token.split('.');
       if (parts.length !== 3) return null;
       const payloadBase64 = parts[1];
-      const decodedJson = Buffer.from(payloadBase64, 'base64').toString('utf-8');
+      const decodedJson = Buffer.from(payloadBase64, 'base64').toString(
+        'utf-8',
+      );
       return JSON.parse(decodedJson);
     } catch (error) {
       return null;

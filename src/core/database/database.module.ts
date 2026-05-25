@@ -13,20 +13,20 @@ import { SessionSchema } from 'src/sessions/entities/session.entity';
 @Module({
   imports: [
     MongooseModule.forRootAsync({
-          useFactory: (configService: ConfigService) => ({
-            uri: configService.get<string>('MONGO_URI'), // Lee la URI desde las variables de entorno
-          }),
-          inject: [ConfigService],
-        }),
+      useFactory: (configService: ConfigService) => ({
+        uri: configService.get<string>('MONGO_URI'), // Lee la URI desde las variables de entorno
+      }),
+      inject: [ConfigService],
+    }),
     MongooseModule.forFeature([
       { name: 'User', schema: UserSchema },
       { name: 'Rol', schema: RolSchema },
       { name: 'Permission', schema: PermissionSchema },
       { name: 'Module', schema: ModuleSchema },
       { name: 'Company', schema: CompanySchema },
-      { name: 'Session', schema: SessionSchema }
+      { name: 'Session', schema: SessionSchema },
     ]),
   ],
-  exports: [MongooseModule]
+  exports: [MongooseModule],
 })
 export class DatabaseModule {}

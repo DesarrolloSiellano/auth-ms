@@ -108,7 +108,12 @@ export class CompaniesController {
   ) {
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limitNumber = limit !== undefined ? Number(limit) : 10;
-    return this.companiesService.findByPage(fromNumber, limitNumber, global, filters);
+    return this.companiesService.findByPage(
+      fromNumber,
+      limitNumber,
+      global,
+      filters,
+    );
   }
 
   @Get('findByAutoComplete')
@@ -128,11 +133,7 @@ export class CompaniesController {
       },
     },
   })
-  findByAutoComplete(
-    @Query('name') name?: string,
-  ) {
-  
-    
+  findByAutoComplete(@Query('name') name?: string) {
     return this.companiesService.findByAutoComplete(name);
   }
 
@@ -261,7 +262,8 @@ export class CompaniesController {
 
   @Post('tcp-docs/message-patterns')
   @ApiOperation({
-    summary: '[SOLO DOCUMENTACIÓN] Patrones TCP soportados por CompaniesService',
+    summary:
+      '[SOLO DOCUMENTACIÓN] Patrones TCP soportados por CompaniesService',
     description: `
 Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
 **No enviar datos reales aquí; la comunicación real es por sockets TCP.**
@@ -272,14 +274,16 @@ Usa el decorador @MessagePattern en NestJS, ejemplo:
   })
   @ApiResponse({
     status: 200,
-    description: 'Documentación de patrones TCP disponible en este microservicio',
+    description:
+      'Documentación de patrones TCP disponible en este microservicio',
     schema: {
       example: {
         message: 'Comandos TCP disponibles en companies',
         patterns: [
           {
             command: 'createCompany',
-            description: 'Crea una compañía. Payload: CreateCompanyDto. Devuelve objeto de creación.',
+            description:
+              'Crea una compañía. Payload: CreateCompanyDto. Devuelve objeto de creación.',
             payloadExample: {
               name: 'Compañía Ejemplar S.A.',
               legalRepresentative: 'Juan Pérez',
@@ -323,7 +327,8 @@ Usa el decorador @MessagePattern en NestJS, ejemplo:
           },
           {
             command: 'updateCompany',
-            description: 'Actualiza una compañía. Payload: { id: string, updateCompanyDto: UpdateCompanyDto }.',
+            description:
+              'Actualiza una compañía. Payload: { id: string, updateCompanyDto: UpdateCompanyDto }.',
             payloadExample: {
               id: 'id-compania',
               updateCompanyDto: {
@@ -346,7 +351,8 @@ Usa el decorador @MessagePattern en NestJS, ejemplo:
       patterns: [
         {
           command: 'createCompany',
-          description: 'Crea una compañía. Payload: CreateCompanyDto. Devuelve objeto de creación.',
+          description:
+            'Crea una compañía. Payload: CreateCompanyDto. Devuelve objeto de creación.',
           payloadExample: {
             name: 'Compañía Ejemplar S.A.',
             legalRepresentative: 'Juan Pérez',
@@ -390,7 +396,8 @@ Usa el decorador @MessagePattern en NestJS, ejemplo:
         },
         {
           command: 'updateCompany',
-          description: 'Actualiza una compañía. Payload: { id: string, updateCompanyDto: UpdateCompanyDto }.',
+          description:
+            'Actualiza una compañía. Payload: { id: string, updateCompanyDto: UpdateCompanyDto }.',
           payloadExample: {
             id: 'id-compania',
             updateCompanyDto: {

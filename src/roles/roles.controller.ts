@@ -105,7 +105,6 @@ export class RolesController {
     @Query('global') global?: string,
     @Query('filters') filters?: string,
   ) {
-
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limitNumber = limit !== undefined ? Number(limit) : 10;
     return this.rolesService.findByPage(

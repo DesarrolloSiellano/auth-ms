@@ -19,9 +19,12 @@ export const TenantBaseSchema = {
  * Helper to create compound indexes for multi-tenant isolation.
  * Usually (tenantId, _id) or (tenantId, customField).
  */
-export function addTenantIndexes(schema: MongooseSchema, fields: string[] = []) {
+export function addTenantIndexes(
+  schema: MongooseSchema,
+  fields: string[] = [],
+) {
   schema.index({ tenantId: 1, company: 1 });
-  fields.forEach(field => {
+  fields.forEach((field) => {
     schema.index({ tenantId: 1, [field]: 1 });
   });
 }
