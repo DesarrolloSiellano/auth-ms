@@ -207,6 +207,7 @@ export class UsersService {
 
   async update(id: string, updateUserDto: UpdateUserDto) {
     const { ...updateData } = updateUserDto;
+    console.log('prueba');
 
     console.log('DTO', updateUserDto);
 
