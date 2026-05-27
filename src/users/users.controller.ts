@@ -261,6 +261,11 @@ export class UsersController {
 
   // Métodos para microservicio con MessagePattern (no documentados en Swagger)
 
+  @MessagePattern({ cmd: 'createExternalUser' })
+  msCreateExternal(@Payload() payload: any) {
+    return this.usersService.createExternal(payload);
+  }
+
   @MessagePattern({ cmd: 'createUser' })
   msCreate(@Payload() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
