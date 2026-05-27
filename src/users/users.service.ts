@@ -6,11 +6,19 @@ import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { MailService } from 'src/mail/mail.service';
 import * as generatePassword from 'generate-password';
+import {
+  resolveUserRoles,
+  resolveUserPermissions,
+  resolveUserModules,
+} from './helpers/user-resolution.helper';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel('User') private readonly userModel: Model<User>,
+    @InjectModel('Rol') private readonly rolModel: Model<any>,
+    @InjectModel('Permission') private readonly permissionModel: Model<any>,
+    @InjectModel('Module') private readonly moduleModel: Model<any>,
     private readonly mailService: MailService,
   ) {}
 
@@ -55,6 +63,76 @@ export class UsersService {
     return {
       data: result,
       message: 'User created successfully. Activation email sent.',
+      meta: {
+        totalData: 1,
+        createdAt: new Date().toISOString(),
+        id: result._id,
+      },
+    };
+  }
+
+  async createExternal(payload: any) {
+    // Generar contraseña temporal segura
+    const tempPassword = generatePassword.generate({
+      length: 12,
+      numbers: true,
+      uppercase: true,
+      symbols: true,
+      strict: true,
+    });
+
+    const userRoles = await resolveUserRoles(payload, this.rolModel);
+    const userPermissions = await resolveUserPermissions(payload, this.permissionModel);
+    const userModules = await resolveUserModules(payload, this.moduleModel);
+
+    const userData = {
+      _id: payload._id,
+      tenantId: payload.tenantId || payload.company || 'default_tenant',
+      name: payload.name,
+      lastName: payload.lastName,
+      email: payload.email,
+      phone: payload.phone,
+      username: payload.username || payload.email,
+      password: tempPassword,
+      company: payload.company || 'default_company',
+      redirectUri: payload.redirectUri || null,
+      roles: userRoles,
+      permissions: userPermissions,
+      modules: userModules,
+      isActived: payload.isActived !== undefined ? payload.isActived : true,
+      isAdmin: payload.isAdmin !== undefined ? payload.isAdmin : false,
+      isSuperAdmin:
+        payload.isSuperAdmin !== undefined ? payload.isSuperAdmin : false,
+      isNewUser: payload.isNewUser !== undefined ? payload.isNewUser : true,
+    };
+
+    const newUser = new this.userModel(userData);
+    const result = await newUser.save();
+
+    this.mailService
+      .sendEmail({
+        to: result.email,
+        subject: 'Bienvenido a BpoNet - Activa tu cuenta',
+        template: 'welcome',
+        context: {
+          name: result.name,
+          platform_name: 'BpoNet',
+          username: result.email,
+          password: tempPassword,
+          login_url: payload.redirectUri
+            ? payload.redirectUri
+            : 'https://app.bponet.com.co',
+        },
+      })
+      .catch((error: any) => {
+        console.log('Error sending email:', error);
+      });
+
+    return {
+      statusCode: 201,
+      status: 'Success',
+      message: 'User created successfully. Activation email sent.',
+      data: result,
       meta: {
         totalData: 1,
         createdAt: new Date().toISOString(),
