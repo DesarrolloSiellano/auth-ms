@@ -154,6 +154,44 @@ export class UsersService {
     return users;
   }
 
+  async findActiveByTenant(user?: any, onlyAgents?: unknown) {
+    const query: any = { isActived: true };
+
+    if (user && !user.isSuperAdmin) {
+      const tenantId = user.tenantId || user.company;
+      const company = user.company || user.tenantId;
+      if (tenantId && company && tenantId !== company) {
+        query.$or = [{ tenantId }, { company }, { tenantId: company }, { company: tenantId }];
+      } else if (tenantId || company) {
+        const val = tenantId || company;
+        query.$or = [{ tenantId: val }, { company: val }];
+      }
+    }
+
+    const users = await this.userModel.find(query).lean().exec();
+    const list = users || [];
+
+    const isOnlyAgents =
+      onlyAgents === true ||
+      onlyAgents === 'true' ||
+      String(onlyAgents).toLowerCase() === 'true';
+
+    let filtered = list;
+    if (isOnlyAgents) {
+      filtered = list.filter((u: any) =>
+        u.roles?.some((r: any) => r?.codeRol === 'AGE' || r === 'AGE'),
+      );
+    }
+
+    return {
+      message: 'Active users retrieved by tenant successfully',
+      statusCode: 200,
+      status: 'Success',
+      data: filtered,
+      meta: { totalData: filtered.length },
+    };
+  }
+
   async findByPage(user?: any, from?: number, limit?: number, global?: any) {
     const { isSuperAdmin } = user;
     const query: any = {};
