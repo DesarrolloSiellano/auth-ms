@@ -1,26 +1,34 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class Login {
-  @ApiProperty({ example: 'usuario@example.com', description: 'Correo electrónico del usuario' })
+  @ApiProperty({
+    example: 'usuario@example.com',
+    description: 'Correo electrónico del usuario',
+  })
   email: string;
 
-  @ApiProperty({ example: 'password123', description: 'Contraseña del usuario' })
+  @ApiProperty({
+    example: 'password123',
+    description: 'Contraseña del usuario',
+  })
   password: string;
 
-  @ApiProperty({ example: false, description: 'Indica si el usuario desea mantener la sesión iniciada' })
+  @ApiProperty({
+    example: false,
+    description: 'Indica si el usuario desea mantener la sesión iniciada',
+  })
   meta?: Meta;
 }
 
-
 export interface Meta {
-    os?: string;
-    os_version?: string;
-    browser?: string;
-    browser_version?: string;
-    istable?: boolean;
-    ismovil?: boolean;
-    isbrowser?:boolean;
-    user_agent?: string;
+  os?: string;
+  os_version?: string;
+  browser?: string;
+  browser_version?: string;
+  istable?: boolean;
+  ismovil?: boolean;
+  isbrowser?: boolean;
+  user_agent?: string;
 }
 
 export class Register {
@@ -30,15 +38,20 @@ export class Register {
   @ApiProperty({ example: 'Pérez', description: 'Apellido del usuario' })
   lastName: string;
 
-  @ApiProperty({ example: 'usuario@example.com', description: 'Correo electrónico del usuario' })
+  @ApiProperty({
+    example: 'usuario@example.com',
+    description: 'Correo electrónico del usuario',
+  })
   email: string;
 
-  @ApiProperty({ example: 'password123', description: 'Contraseña para registro' })
+  @ApiProperty({
+    example: 'password123',
+    description: 'Contraseña para registro',
+  })
   password: string;
 }
 
 export class ChangePassword {
-
   @ApiProperty({ example: '1234567890abcdef', description: 'ID del usuario' })
   id: string;
 
@@ -50,19 +63,31 @@ export class ChangePassword {
 }
 
 export class RecoveryPassword {
-  @ApiProperty({ example: 'usuario@example.com', description: 'Correo electrónico para recuperación de contraseña' })
+  @ApiProperty({
+    example: 'usuario@example.com',
+    description: 'Correo electrónico para recuperación de contraseña',
+  })
   email: string;
 }
 
 export class SetPasswordWithToken {
-  @ApiProperty({ example: 'abcdef123456...', description: 'Token de activación enviado por correo' })
+  @ApiProperty({
+    example: 'abcdef123456...',
+    description: 'Token de activación enviado por correo',
+  })
   token: string;
 
-  @ApiProperty({ example: 'newPassword123!', description: 'Nueva contraseña a establecer' })
+  @ApiProperty({
+    example: 'newPassword123!',
+    description: 'Nueva contraseña a establecer',
+  })
   password: string;
 }
 
 export class RefreshToken {
-  @ApiProperty({ example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...', description: 'Token de refresco' })
+  @ApiProperty({
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    description: 'Token de refresco',
+  })
   refreshToken: string;
 }

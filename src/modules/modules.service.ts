@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
 import { InjectModel } from '@nestjs/mongoose';
@@ -36,7 +33,7 @@ export class ModulesService {
   }
 
   async findAll() {
-    const modules = await this.moduleModel.find().exec();
+    const modules = await this.moduleModel.find().lean().exec();
     if (!modules) {
       throw new NotFoundException('No modules found');
     }
@@ -45,14 +42,14 @@ export class ModulesService {
   }
 
   async findOne(id: string) {
-    const module = await this.moduleModel.findById(id).exec();
+    const module = await this.moduleModel.findById(id).lean().exec();
     if (!module) {
       throw new NotFoundException(`Module with ID ${id} not found`);
     }
     return module;
   }
 
-  async findByPage(from?: number, limit?: number, global?: any, filters?: any) {
+  async findByPage(from?: number, limit?: number, global?: any) {
     const query: any = {};
     if (global) {
       query.$or = [
@@ -65,7 +62,9 @@ export class ModulesService {
     const docs = await this.moduleModel
       .find(query)
       .skip(skipNumber)
-      .limit(limitNumber);
+      .limit(limitNumber)
+      .lean()
+      .exec();
     const totalData = await this.moduleModel.countDocuments(query);
 
     return {

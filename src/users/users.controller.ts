@@ -32,9 +32,8 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @ApiBearerAuth()
 @Controller('users')
 @UseGuards(ThrottlerHybridGuard)
-
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   @Post()
   @UseGuards(AuthGuard('jwt'))
@@ -59,8 +58,8 @@ export class UsersController {
       },
     },
   })
-  create(@Body() createUserDto: CreateUserDto, @Req() req: any,) {
-    const user = req.user
+  create(@Body() createUserDto: CreateUserDto, @Req() req: any) {
+    const user = req.user;
     if (!user.isAdmin) {
       throw new UnauthorizedException('No tienes permiso para crear usuarios');
     }
@@ -114,21 +113,12 @@ export class UsersController {
     @Query('from') from?: number,
     @Query('limit') limit?: number,
     @Query('global') global?: string,
-    @Query('filters') filters?: string,
-
   ) {
-    const user = req.user
+    const user = req.user;
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limiteNumber = limit !== undefined ? Number(limit) : 10;
-    return this.usersService.findByPage(
-      user,
-      fromNumber,
-      limiteNumber,
-      global,
-      filters,
-    );
+    return this.usersService.findByPage(user, fromNumber, limiteNumber, global);
   }
-
 
   @Get(':id')
   @UseGuards(AuthGuard('jwt'))
@@ -224,8 +214,12 @@ export class UsersController {
     },
   })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Req() req: any) {
-    const user = req.user
+  update(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+    @Req() req: any,
+  ) {
+    const user = req.user;
     if (!user.isAdmin) {
       throw new UnauthorizedException('No tienes permiso para crear usuarios');
     }
@@ -258,7 +252,7 @@ export class UsersController {
   })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
   remove(@Param('id') id: string, @Req() req: any) {
-    const user = req.user
+    const user = req.user;
     if (!user.isAdmin) {
       throw new UnauthorizedException('No tienes permiso para crear usuarios');
     }
@@ -266,6 +260,11 @@ export class UsersController {
   }
 
   // Métodos para microservicio con MessagePattern (no documentados en Swagger)
+
+  @MessagePattern({ cmd: 'createExternalUser' })
+  msCreateExternal(@Payload() payload: any) {
+    return this.usersService.createExternal(payload);
+  }
 
   @MessagePattern({ cmd: 'createUser' })
   msCreate(@Payload() createUserDto: CreateUserDto) {
@@ -490,7 +489,6 @@ Ejemplos de uso:
           command: 'removeUser',
           description: 'Elimina un usuario. Payload: id:string.',
           payloadExample: { id: 'id-usuario' },
-
         },
       ],
     };

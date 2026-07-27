@@ -1,12 +1,16 @@
-import { CanActivate, ExecutionContext, Injectable, BadRequestException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  BadRequestException,
+} from '@nestjs/common';
 import { Types } from 'mongoose';
 
 @Injectable()
 export class ValidateObjectIdGuard implements CanActivate {
-
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
-    
+
     // Obtenemos el parámetro 'id' de la ruta (ajusta si usas otro nombre)
     const id = request.params.id;
 

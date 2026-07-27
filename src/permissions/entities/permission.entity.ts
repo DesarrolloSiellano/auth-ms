@@ -12,18 +12,18 @@ export interface Permission extends Document {
   rol?: Rol; // Relación con el Rol
   created: Date;
   modified: Date;
-  dateCreated?: String;
-  hourCreated?: String;
-  dateModified?: String;
-  hourModified?: String;
-  idUserModified?: String;
+  dateCreated?: string;
+  hourCreated?: string;
+  dateModified?: string;
+  hourModified?: string;
+  idUserModified?: string;
   isActive: boolean;
 }
 
 export const PermissionSchema = new Schema({
-  name: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
   description: { type: String, required: true },
-  action: { type: String, required: true, unique: true },
+  action: { type: String, required: true },
   resource: { type: String, required: true },
   resourceId: { type: String },
   type: { type: String, required: true },
@@ -36,7 +36,15 @@ export const PermissionSchema = new Schema({
   hourModified: { type: String, default: moment().format('HH:mm:ss') },
   idUserModified: { type: Schema.Types.ObjectId, ref: 'User' },
   isActive: { type: Boolean, default: true },
-
 });
 
-export const PermissionModel = model<Permission>('permissions', PermissionSchema);
+// Registrar plugin de multi-tenant automático
+
+PermissionSchema.index({ name: 1 }, { unique: true });
+PermissionSchema.index({ action: 1 });
+PermissionSchema.index({ resource: 1 });
+
+export const PermissionModel = model<Permission>(
+  'permissions',
+  PermissionSchema,
+);

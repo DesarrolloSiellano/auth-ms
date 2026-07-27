@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CreateCompanyDto } from './dto/create-company.dto';
@@ -36,14 +33,14 @@ export class CompaniesService {
   }
 
   async findAll() {
-    const companies = await this.companyModel.find().exec();
+    const companies = await this.companyModel.find().lean().exec();
     if (!companies || companies.length === 0) {
       throw new NotFoundException('No companies found');
     }
     return companies;
   }
 
-  async findByPage(from?: number, limit?: number, global?: any, filters?: any) {
+  async findByPage(from?: number, limit?: number, global?: any) {
     const query: any = {};
 
     if (global) {
@@ -66,6 +63,7 @@ export class CompaniesService {
       .find(query)
       .skip(skipNumber)
       .limit(limitNumber)
+      .lean()
       .exec();
     const totalData = await this.companyModel.countDocuments(query);
 
@@ -105,6 +103,7 @@ export class CompaniesService {
       })
       .limit(10) // Limitar cantidad para autocompletado
       .sort({ _id: -1 }) // Similar al ejemplo orden descendente
+      .lean()
       .exec();
 
     return {
@@ -117,7 +116,7 @@ export class CompaniesService {
   }
 
   async findOne(id: string) {
-    const company = await this.companyModel.findById(id).exec();
+    const company = await this.companyModel.findById(id).lean().exec();
     if (!company) {
       throw new NotFoundException(`Company with ID ${id} not found`);
     }

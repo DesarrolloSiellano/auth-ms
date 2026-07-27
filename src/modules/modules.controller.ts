@@ -37,7 +37,6 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 export class ModulesController {
   constructor(private readonly modulesService: ModulesService) {}
 
-  
   @Post()
   @ApiOperation({ summary: 'Crear un módulo nuevo' })
   @ApiBody({ type: CreateModuleDto })
@@ -61,15 +60,13 @@ export class ModulesController {
       },
     },
   })
-  
   create(@Body() createModuleDto: CreateModuleDto, @Req() req: any) {
-     const user = req.user as UserPayload;
-    if(!user.isAdmin){
+    const user = req.user as UserPayload;
+    if (!user.isAdmin) {
       throw new UnauthorizedException('User is not admin');
     }
     return this.modulesService.create(createModuleDto);
   }
-
 
   @Get()
   @ApiOperation({ summary: 'Obtener todos los módulos' })
@@ -90,41 +87,38 @@ export class ModulesController {
   })
   findAll(@Req() req: any) {
     const user = req.user as UserPayload;
-    if(!user.isAdmin){
+    if (!user.isAdmin) {
       throw new UnauthorizedException('User is not admin');
     }
     return this.modulesService.findAll();
   }
 
-   @Get('findByPage')
-    @ApiOperation({ summary: 'Obtener Módulos por página' })
-    @ApiResponse({
-      status: 200,
-      description: 'Listado de Módulos por página',
-      schema: {
-        example: {
-          message: 'find  modules',
-          statusCode: 200,
-          status: 'Success',
-          data: [
-            /* array de permisos */
-          ],
-          meta: { totalData: 5 },
-        },
+  @Get('findByPage')
+  @ApiOperation({ summary: 'Obtener Módulos por página' })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de Módulos por página',
+    schema: {
+      example: {
+        message: 'find  modules',
+        statusCode: 200,
+        status: 'Success',
+        data: [
+          /* array de permisos */
+        ],
+        meta: { totalData: 5 },
       },
-    })
-    findByPage(
-      @Query('from') from?: number,
-      @Query('limit') limit?: number,
-      @Query('global') global?: string,
-      @Query('filters') filters?: string,
-    ) {
-      
-      const fromNumber = from !== undefined ? Number(from) : 0;
-      const limiteNumber = limit !== undefined ? Number(limit) : 10;
-      return this.modulesService.findByPage(fromNumber, limiteNumber, global, filters);
-    }
-
+    },
+  })
+  findByPage(
+    @Query('from') from?: number,
+    @Query('limit') limit?: number,
+    @Query('global') global?: string,
+  ) {
+    const fromNumber = from !== undefined ? Number(from) : 0;
+    const limiteNumber = limit !== undefined ? Number(limit) : 10;
+    return this.modulesService.findByPage(fromNumber, limiteNumber, global);
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener un módulo por ID' })
@@ -152,7 +146,6 @@ export class ModulesController {
   findOne(@Param('id') id: string) {
     return this.modulesService.findOne(id);
   }
-
 
   @Put(':id')
   @ApiOperation({ summary: 'Actualizar un módulo por ID' })
@@ -185,7 +178,6 @@ export class ModulesController {
   update(@Param('id') id: string, @Body() updateModuleDto: UpdateModuleDto) {
     return this.modulesService.update(id, updateModuleDto);
   }
-
 
   @Delete(':id')
   @ApiOperation({ summary: 'Eliminar un módulo por ID' })
@@ -390,5 +382,3 @@ Ejemplos de uso del decorador @MessagePattern en NestJS:
     };
   }
 }
-
-

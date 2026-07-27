@@ -1,25 +1,28 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { MailService } from 'src/mail/mail.service';
-import * as crypto from 'crypto';
 import * as generatePassword from 'generate-password';
+import {
+  resolveUserRoles,
+  resolveUserPermissions,
+  resolveUserModules,
+} from './helpers/user-resolution.helper';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel('User') private readonly userModel: Model<User>,
+    @InjectModel('Rol') private readonly rolModel: Model<any>,
+    @InjectModel('Permission') private readonly permissionModel: Model<any>,
+    @InjectModel('Module') private readonly moduleModel: Model<any>,
     private readonly mailService: MailService,
-  ) { }
+  ) {}
 
   async create(createUserDto: CreateUserDto) {
-
     // Generar contraseña temporal segura
     const tempPassword = generatePassword.generate({
       length: 12,
@@ -38,23 +41,98 @@ export class UsersService {
     const newUser = new this.userModel(userData);
     const result = await newUser.save();
 
-
-    this.mailService.sendEmail({
-      to: result.email,
-      subject: 'Bienvenido a BpoNet - Activa tu cuenta',
-      template: 'welcome',
-      context: {
-        name: result.name,
-        platform_name: 'BpoNet',
-        username: result.email,
-        password: tempPassword,
-        login_url: userData.redirectUri ? userData.redirectUri : 'https://app.bponet.com.co'
-      },
-    });
+    this.mailService
+      .sendEmail({
+        to: result.email,
+        subject: 'Bienvenido a BpoNet - Activa tu cuenta',
+        template: 'welcome',
+        context: {
+          name: result.name,
+          platform_name: 'BpoNet',
+          username: result.email,
+          password: tempPassword,
+          login_url: userData.redirectUri
+            ? userData.redirectUri
+            : 'https://app.bponet.com.co',
+        },
+      })
+      .catch((error: any) => {
+        console.log('Error sending email:', error);
+      });
 
     return {
       data: result,
       message: 'User created successfully. Activation email sent.',
+      meta: {
+        totalData: 1,
+        createdAt: new Date().toISOString(),
+        id: result._id,
+      },
+    };
+  }
+
+  async createExternal(payload: any) {
+    // Generar contraseña temporal segura
+    const tempPassword = generatePassword.generate({
+      length: 12,
+      numbers: true,
+      uppercase: true,
+      symbols: true,
+      strict: true,
+    });
+
+    const userRoles = await resolveUserRoles(payload, this.rolModel);
+    const userPermissions = await resolveUserPermissions(payload, this.permissionModel);
+    const userModules = await resolveUserModules(payload, this.moduleModel);
+
+    const userData = {
+      _id: payload._id,
+      tenantId: payload.tenantId || payload.company || 'default_tenant',
+      name: payload.name,
+      lastName: payload.lastName,
+      email: payload.email,
+      phone: payload.phone,
+      username: payload.username || payload.email,
+      password: tempPassword,
+      company: payload.company || 'default_company',
+      redirectUri: payload.redirectUri || null,
+      roles: userRoles,
+      permissions: userPermissions,
+      modules: userModules,
+      isActived: payload.isActived !== undefined ? payload.isActived : true,
+      isAdmin: payload.isAdmin !== undefined ? payload.isAdmin : false,
+      isSuperAdmin:
+        payload.isSuperAdmin !== undefined ? payload.isSuperAdmin : false,
+      isNewUser: payload.isNewUser !== undefined ? payload.isNewUser : true,
+    };
+
+    const newUser = new this.userModel(userData);
+    const result = await newUser.save();
+
+    this.mailService
+      .sendEmail({
+        to: result.email,
+        subject: 'Bienvenido a BpoNet - Activa tu cuenta',
+        template: 'welcome',
+        context: {
+          name: result.name,
+          platform_name: 'BpoNet',
+          username: result.email,
+          password: tempPassword,
+          login_url: payload.redirectUri
+            ? payload.redirectUri
+            : 'https://app.bponet.com.co',
+        },
+      })
+      .catch((error: any) => {
+        console.log('Error sending email:', error);
+      });
+
+    return {
+      statusCode: 201,
+      status: 'Success',
+      message: 'User created successfully. Activation email sent.',
+      data: result,
       meta: {
         totalData: 1,
         createdAt: new Date().toISOString(),
@@ -69,20 +147,14 @@ export class UsersService {
       query.company = user.company;
     }
 
-    const users = await this.userModel.find(query).exec();
+    const users = await this.userModel.find(query).lean().exec();
     if (!users || users.length === 0) {
       throw new NotFoundException('No users found');
     }
     return users;
   }
 
-  async findByPage(
-    user?: any,
-    from?: number,
-    limit?: number,
-    global?: any,
-    filters?: any,
-  ) {
+  async findByPage(user?: any, from?: number, limit?: number, global?: any) {
     const { isSuperAdmin } = user;
     const query: any = {};
 
@@ -115,8 +187,13 @@ export class UsersService {
     const limitNumber = limit && limit > 0 ? limit : 100;
 
     const [docs, totalData] = await Promise.all([
-      this.userModel.find(query).skip(skipNumber).limit(limitNumber),
-      this.userModel.countDocuments(query),
+      this.userModel
+        .find(query)
+        .skip(skipNumber)
+        .limit(limitNumber)
+        .lean()
+        .exec(),
+      this.userModel.countDocuments(query).exec(),
     ]);
 
     return {
@@ -136,9 +213,11 @@ export class UsersService {
 
     const skip = (page - 1) * limit;
     const [users, totalData] = await Promise.all([
-      this.userModel.find(query).skip(skip).limit(limit).exec(),
-      this.userModel.countDocuments(query),
+      this.userModel.find(query).skip(skip).limit(limit).lean().exec(),
+      this.userModel.countDocuments(query).exec(),
     ]);
+
+    console.log(user);
 
     return {
       data: users,
@@ -152,7 +231,7 @@ export class UsersService {
 
   // Búsqueda simple por ID
   async findOne(id: string) {
-    const user = await this.userModel.findById(id).exec();
+    const user = await this.userModel.findById(id).lean().exec();
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
@@ -187,7 +266,7 @@ export class UsersService {
       query.company = user.company;
     }
 
-    const users = await this.userModel.find(query).exec();
+    const users = await this.userModel.find(query).lean().exec();
 
     if (!users || users.length === 0) {
       throw new NotFoundException('No users found for given date range');
@@ -205,11 +284,16 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    const { password, company, ...updateData } = updateUserDto;
+    const { ...updateData } = updateUserDto;
+    console.log('prueba');
+
+    console.log('DTO', updateUserDto);
 
     const updatedUser = await this.userModel
       .findByIdAndUpdate(id, updateData, { new: true })
       .exec();
+
+    console.log('Updated User', updatedUser);
 
     if (!updatedUser) {
       throw new NotFoundException(`User with ID ${id} not found`);
