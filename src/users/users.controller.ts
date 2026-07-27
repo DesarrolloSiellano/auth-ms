@@ -120,6 +120,33 @@ export class UsersController {
     return this.usersService.findByPage(user, fromNumber, limiteNumber, global);
   }
 
+  @Get('findByTenant')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({ summary: 'Obtener usuarios y agentes activos por tenant/empresa' })
+  @ApiQuery({
+    name: 'onlyAgents',
+    required: false,
+    type: Boolean,
+    description: 'Si es true, filtra solo los usuarios que son agentes activos (codeRol: AGE)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de usuarios/agentes activos por tenant',
+    schema: {
+      example: {
+        message: 'Active users retrieved by tenant successfully',
+        statusCode: 200,
+        status: 'Success',
+        data: [],
+        meta: { totalData: 0 },
+      },
+    },
+  })
+  findByTenant(@Req() req: any, @Query('onlyAgents') onlyAgents?: string) {
+    const user = req.user;
+    return this.usersService.findActiveByTenant(user, onlyAgents);
+  }
+
   @Get(':id')
   @UseGuards(AuthGuard('jwt'))
   @UseGuards(ValidateObjectIdGuard)
@@ -275,6 +302,13 @@ export class UsersController {
   msFindAll(@Payload() payload: any) {
     const user = payload?.user;
     return this.usersService.findAll(user);
+  }
+
+  @MessagePattern({ cmd: 'findUsersByTenant' })
+  msFindByTenant(@Payload() payload: any) {
+    const user = payload?.user || payload;
+    const onlyAgents = payload?.onlyAgents !== undefined ? payload.onlyAgents : false;
+    return this.usersService.findActiveByTenant(user, onlyAgents);
   }
 
   @MessagePattern({ cmd: 'findUsersByPagination' })
