@@ -215,7 +215,8 @@ export class PermissionsController {
   }
 
   @MessagePattern({ cmd: 'findOnePermission' })
-  msFindOne(@Payload() id: string) {
+  msFindOne(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.permissionsService.findOne(id);
   }
 
@@ -234,7 +235,8 @@ export class PermissionsController {
   }
 
   @MessagePattern({ cmd: 'removePermission' })
-  msRemove(@Payload() id: string) {
+  msRemove(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.permissionsService.remove(id);
   }
 

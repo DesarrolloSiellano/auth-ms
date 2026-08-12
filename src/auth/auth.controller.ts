@@ -33,23 +33,26 @@ import { UserPayload } from 'src/core/interfaces/user-payload.interface';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtTCPStrategy } from 'src/core/strategies/jwtTCP.strategy';
 import { RealIP } from 'nestjs-real-ip';
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('auth')
 @Controller('auth')
 @UseGuards(ThrottlerHybridGuard)
 export class AuthController {
-  private readonly whitelist = [
-    'app.bponet.com.co',
-    'localhost',
-    'campaign.bponet.com.co',
-    'educative.bponet.com.co',
-    'helpdesk.bponet.com.co',
-  ];
+  private readonly whitelist: string[];
 
   constructor(
     private readonly authService: AuthService,
     private jwtTCPStrategy: JwtTCPStrategy,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.whitelist = (
+      this.configService.get<string>('SSO_ALLOWED_ORIGINS') ?? ''
+    )
+      .split(',')
+      .map((domain) => domain.trim())
+      .filter((domain) => domain !== '');
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -71,13 +74,10 @@ export class AuthController {
             lastName: 'Pérez',
             email: 'juan@mail.com',
             username: 'juanp',
-            date_joined: '2025-08-06T12:00:00Z',
             isActived: true,
-            isAdmin: false,
             company: 'EmpresaX',
-            modules: ['mod1', 'mod2'],
-            roles: ['Admin', 'Editor'],
-            permissions: ['create', 'read', 'update'],
+            tenantId: '000000',
+            isSuperAdmin: false,
           },
           totalData: 1,
           token: 'jwt.token.aqui',
@@ -284,7 +284,8 @@ export class AuthController {
   }
 
   @MessagePattern({ cmd: 'validateUser' })
-  async msValidateUser(@Payload() token: string) {
+  async msValidateUser(@Payload() payload: any) {
+    const token = payload?.token ?? payload;
     const user = await this.jwtTCPStrategy.validate(token);
     return {
       user,

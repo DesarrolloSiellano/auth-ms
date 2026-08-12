@@ -83,12 +83,37 @@ Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo m
   document.servers = [{ url: '/auth/' }];
   SwaggerModule.setup('api-docs', app, document); // http://localhost:PORT/api-docs
 
-  // Microservicio TCP
+  // Microservicio TCP (con TLS/mTLS opcional vía entorno)
+  const tlsEnabled = configService.get<string>('TLS_ENABLED', 'false') === 'true';
+  const tlsMutual = configService.get<string>('TLS_MUTUAL', 'false') === 'true';
+
+  let tlsOptions: any;
+  if (tlsEnabled) {
+    const keyPath = configService.get<string>('TLS_KEY_PATH');
+    const certPath = configService.get<string>('TLS_CERT_PATH');
+    const caPath = configService.get<string>('TLS_CA_PATH');
+
+    if (!keyPath || !certPath) {
+      throw new Error(
+        'TLS_ENABLED=true requiere TLS_KEY_PATH y TLS_CERT_PATH configurados',
+      );
+    }
+
+    tlsOptions = {
+      key: fsExtra.readFileSync(keyPath),
+      cert: fsExtra.readFileSync(certPath),
+      ...(caPath ? { ca: fsExtra.readFileSync(caPath) } : {}),
+      requestCert: tlsMutual,
+      rejectUnauthorized: tlsMutual,
+    };
+  }
+
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.TCP,
     options: {
       host: configService.get<string>('MICROSERVICE_HOST', '127.0.0.1'),
       port: configService.get<number>('MICROSERVICE_PORT', 3011),
+      ...(tlsEnabled && tlsOptions ? { tls: tlsOptions } : {}),
     },
   });
 

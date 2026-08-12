@@ -17,6 +17,7 @@ import { MailService } from 'src/mail/mail.service';
 import { Session } from 'src/sessions/entities/session.entity';
 import * as crypto from 'crypto';
 import { SetPasswordWithToken } from './dto/auth.dto';
+import { buildIdentityPayload } from './helpers/identity-payload.helper';
 
 @Injectable()
 export class AuthService {
@@ -56,23 +57,7 @@ export class AuthService {
       );
     }
 
-    const payload = {
-      _id: userDB._id,
-      name: userDB.name,
-      lastName: userDB.lastName,
-      email: userDB.email,
-      username: userDB.username,
-      date_joined: userDB.created,
-      isActived: userDB.isActived,
-      isAdmin: userDB.isAdmin,
-      isSuperAdmin: userDB.isSuperAdmin,
-      isNewUser: userDB.isNewUser,
-      company: userDB.company,
-      tenantId: userDB.tenantId,
-      modules: userDB.modules,
-      roles: userDB.roles,
-      permissions: userDB.permissions,
-    };
+    const payload = buildIdentityPayload(userDB);
 
     const accessToken = this.getJwtToken(
       payload,
@@ -142,23 +127,7 @@ export class AuthService {
       }
 
       // 3. Generate New Access Token
-      const newPayload = {
-        _id: user._id,
-        name: user.name,
-        lastName: user.lastName,
-        email: user.email,
-        username: user.username,
-        date_joined: user.created,
-        isActived: user.isActived,
-        isAdmin: user.isAdmin,
-        isSuperAdmin: user.isSuperAdmin,
-        isNewUser: user.isNewUser,
-        company: user.company,
-        tenantId: user.tenantId,
-        modules: user.modules,
-        roles: user.roles,
-        permissions: user.permissions,
-      };
+      const newPayload = buildIdentityPayload(user);
 
       const accessToken = this.getJwtToken(
         newPayload,

@@ -223,7 +223,8 @@ export class ModulesController {
   }
 
   @MessagePattern({ cmd: 'findOneModule' })
-  msFindOne(@Payload() id: string) {
+  msFindOne(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.modulesService.findOne(id);
   }
 
@@ -235,7 +236,8 @@ export class ModulesController {
   }
 
   @MessagePattern({ cmd: 'removeModule' })
-  msRemove(@Payload() id: string) {
+  msRemove(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.modulesService.remove(id);
   }
 

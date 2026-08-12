@@ -202,7 +202,8 @@ export class RolesController {
   }
 
   @MessagePattern({ cmd: 'findOneRole' })
-  msFindOne(@Payload() id: string) {
+  msFindOne(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.rolesService.findOne(id);
   }
 
@@ -212,7 +213,8 @@ export class RolesController {
   }
 
   @MessagePattern({ cmd: 'removeRole' })
-  msRemove(@Payload() id: string) {
+  msRemove(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.rolesService.remove(id);
   }
 

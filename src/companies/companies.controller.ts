@@ -233,7 +233,8 @@ export class CompaniesController {
   }
 
   @MessagePattern({ cmd: 'findOneCompany' })
-  msFindOne(@Payload() id: string) {
+  msFindOne(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.companiesService.findOne(id);
   }
 
@@ -249,7 +250,8 @@ export class CompaniesController {
   }
 
   @MessagePattern({ cmd: 'removeCompany' })
-  msRemove(@Payload() id: string) {
+  msRemove(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.companiesService.remove(id);
   }
 

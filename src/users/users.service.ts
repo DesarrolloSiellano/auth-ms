@@ -346,4 +346,87 @@ export class UsersService {
     }
     return deletedUser;
   }
+
+  async getProfile(user: any) {
+    const found = await this.userModel.findById(user._id).lean().exec();
+    if (!found) {
+      throw new NotFoundException('User not found');
+    }
+
+    const identity: any = { ...found };
+    delete identity.password;
+    delete identity.passwordResetToken;
+    delete identity.passwordResetExpires;
+
+    return {
+      message: 'Profile retrieved successfully',
+      data: {
+        user: identity,
+        modules: found.modules || [],
+        roles: found.roles || [],
+        permissions: found.permissions || [],
+      },
+      meta: {
+        totalData: 1,
+        id: found._id,
+      },
+    };
+  }
+
+  async getUserModules(user: any) {
+    const found = await this.userModel
+      .findById(user._id)
+      .select('modules')
+      .lean()
+      .exec();
+    if (!found) {
+      throw new NotFoundException('User not found');
+    }
+    return {
+      message: 'Modules retrieved successfully',
+      data: found.modules || [],
+      meta: {
+        totalData: (found.modules || []).length,
+        id: found._id,
+      },
+    };
+  }
+
+  async getUserRoles(user: any) {
+    const found = await this.userModel
+      .findById(user._id)
+      .select('roles')
+      .lean()
+      .exec();
+    if (!found) {
+      throw new NotFoundException('User not found');
+    }
+    return {
+      message: 'Roles retrieved successfully',
+      data: found.roles || [],
+      meta: {
+        totalData: (found.roles || []).length,
+        id: found._id,
+      },
+    };
+  }
+
+  async getUserPermissions(user: any) {
+    const found = await this.userModel
+      .findById(user._id)
+      .select('permissions')
+      .lean()
+      .exec();
+    if (!found) {
+      throw new NotFoundException('User not found');
+    }
+    return {
+      message: 'Permissions retrieved successfully',
+      data: found.permissions || [],
+      meta: {
+        totalData: (found.permissions || []).length,
+        id: found._id,
+      },
+    };
+  }
 }
