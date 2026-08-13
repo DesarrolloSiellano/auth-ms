@@ -48,7 +48,7 @@ export class CompaniesService {
       query.$or = [
         { name: regex },
         { legalRepresentative: regex },
-        { ruc: regex },
+        { id: regex },
         { address: regex },
         { phone: regex },
         { email: regex },

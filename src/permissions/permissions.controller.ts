@@ -215,7 +215,8 @@ export class PermissionsController {
   }
 
   @MessagePattern({ cmd: 'findOnePermission' })
-  msFindOne(@Payload() id: string) {
+  msFindOne(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.permissionsService.findOne(id);
   }
 
@@ -234,7 +235,8 @@ export class PermissionsController {
   }
 
   @MessagePattern({ cmd: 'removePermission' })
-  msRemove(@Payload() id: string) {
+  msRemove(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.permissionsService.remove(id);
   }
 
@@ -246,7 +248,11 @@ export class PermissionsController {
 Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
 **No enviar datos reales aquí; la comunicación real es por sockets TCP.**
 
-Usa el decorador @MessagePattern en NestJS, ejemplo:
+**Autenticación entre servicios (obligatoria):** todo payload TCP debe incluir
+\`serviceKey\` con el valor de \`SERVICE_API_KEY\`. Los handlers que antes recibían
+una primitiva (\`id\`) ahora reciben \`{ serviceKey, id }\`.
+
+Ejemplos de uso del decorador @MessagePattern en NestJS:
 \`@MessagePattern({ cmd: 'createPermission' })\`
     `,
   })

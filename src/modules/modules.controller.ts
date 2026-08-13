@@ -223,7 +223,8 @@ export class ModulesController {
   }
 
   @MessagePattern({ cmd: 'findOneModule' })
-  msFindOne(@Payload() id: string) {
+  msFindOne(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.modulesService.findOne(id);
   }
 
@@ -235,7 +236,8 @@ export class ModulesController {
   }
 
   @MessagePattern({ cmd: 'removeModule' })
-  msRemove(@Payload() id: string) {
+  msRemove(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.modulesService.remove(id);
   }
 
@@ -245,6 +247,10 @@ export class ModulesController {
     description: `
 Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
 **No enviar datos reales aquí; la comunicación real es por sockets TCP.**
+
+**Autenticación entre servicios (obligatoria):** todo payload TCP debe incluir
+\`serviceKey\` con el valor de \`SERVICE_API_KEY\`. Los handlers que antes recibían
+una primitiva (\`id\`) ahora reciben \`{ serviceKey, id }\`.
 
 Ejemplos de uso del decorador @MessagePattern en NestJS:
 \`@MessagePattern({ cmd: 'createModule' })\`

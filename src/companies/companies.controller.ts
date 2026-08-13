@@ -233,7 +233,8 @@ export class CompaniesController {
   }
 
   @MessagePattern({ cmd: 'findOneCompany' })
-  msFindOne(@Payload() id: string) {
+  msFindOne(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.companiesService.findOne(id);
   }
 
@@ -249,7 +250,8 @@ export class CompaniesController {
   }
 
   @MessagePattern({ cmd: 'removeCompany' })
-  msRemove(@Payload() id: string) {
+  msRemove(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.companiesService.remove(id);
   }
 
@@ -261,7 +263,11 @@ export class CompaniesController {
 Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
 **No enviar datos reales aquí; la comunicación real es por sockets TCP.**
 
-Usa el decorador @MessagePattern en NestJS, ejemplo:
+**Autenticación entre servicios (obligatoria):** todo payload TCP debe incluir
+\`serviceKey\` con el valor de \`SERVICE_API_KEY\`. Los handlers que antes recibían
+una primitiva (\`id\`) ahora reciben \`{ serviceKey, id }\`.
+
+Ejemplos de uso del decorador @MessagePattern en NestJS:
 \`@MessagePattern({ cmd: 'createCompany' })\`
     `,
   })
