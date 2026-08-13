@@ -1,9 +1,11 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { tenantLocalStorage } from './tenant.context';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(TenantMiddleware.name);
+
   use(req: Request, res: Response, next: NextFunction) {
     let companyId: string | undefined;
     let tenantId: string | undefined;
@@ -60,7 +62,7 @@ export class TenantMiddleware implements NestMiddleware {
       );
       return JSON.parse(decodedJson);
     } catch (error) {
-      console.log('error decodeJwt', error);
+      this.logger.warn(`error decodeJwt: ${error?.message}`);
       return null;
     }
   }

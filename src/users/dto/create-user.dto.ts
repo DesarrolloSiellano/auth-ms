@@ -1,4 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateUserDto {
   @ApiPropertyOptional({
@@ -6,132 +14,176 @@ export class CreateUserDto {
     description:
       'ID opcional del usuario. Si se envía, se guarda con este _id; si no, Mongo lo genera',
   })
+  @IsOptional()
+  @IsString()
   _id?: string;
 
   @ApiProperty({ example: 'Juan', description: 'Nombre del usuario' })
+  @IsString()
+  @IsNotEmpty()
   name: string;
 
   @ApiProperty({ example: 'Pérez', description: 'Apellido del usuario' })
+  @IsString()
+  @IsNotEmpty()
   lastName: string;
 
   @ApiProperty({ example: '+573001234567', description: 'Número telefónico' })
+  @IsOptional()
+  @IsString()
   phone: string;
 
   @ApiProperty({ example: 'juan@mail.com', description: 'Correo electrónico' })
+  @IsEmail()
+  @IsNotEmpty()
   email: string;
 
   @ApiPropertyOptional({
     example: 'juanperez',
     description: 'Nombre de usuario (opcional)',
   })
+  @IsOptional()
+  @IsString()
   username?: string;
 
   @ApiProperty({ example: 'password123', description: 'Contraseña' })
+  @IsOptional()
+  @IsString()
   password: string;
 
   @ApiPropertyOptional({
     example: '2025-08-06T12:00:00Z',
     description: 'Fecha de creación',
   })
+  @IsOptional()
   created?: Date;
 
   @ApiPropertyOptional({
     example: '2025-08-06T12:30:00Z',
     description: 'Fecha de última modificación',
   })
+  @IsOptional()
   modified?: Date;
 
   @ApiPropertyOptional({
     example: '06/08/2025',
     description: 'Fecha legible de creación',
   })
+  @IsOptional()
+  @IsString()
   dateCreated?: string;
 
   @ApiPropertyOptional({
     example: '12:00:00',
     description: 'Hora legible de creación',
   })
+  @IsOptional()
+  @IsString()
   hourCreated?: string;
 
   @ApiPropertyOptional({
     example: '06/08/2025',
     description: 'Fecha legible de modificación',
   })
+  @IsOptional()
+  @IsString()
   dateModified?: string;
 
   @ApiPropertyOptional({
     example: '12:30:00',
     description: 'Hora legible de modificación',
   })
+  @IsOptional()
+  @IsString()
   hourModified?: string;
 
   @ApiPropertyOptional({
     example: '1234567890abcdef',
     description: 'ID del usuario que realizó modificaciones',
   })
+  @IsOptional()
+  @IsString()
   idUserModified?: string;
 
   @ApiProperty({
     example: true,
     description: 'Indica si el usuario está activo',
   })
+  @IsBoolean()
   isActived: boolean;
 
   @ApiProperty({
     example: false,
     description: 'Indica si el usuario es administrador',
   })
+  @IsBoolean()
   isAdmin: boolean;
 
   @ApiProperty({
     example: false,
     description: 'Indica si el usuario es super usuario administrador',
   })
+  @IsBoolean()
   isSuperAdmin: boolean;
 
   @ApiProperty({ example: true, description: 'Indica si es un usuario nuevo' })
+  @IsOptional()
+  @IsBoolean()
   isNewUser: boolean;
 
   @ApiPropertyOptional({
     example: 'EmpresaX',
     description: 'Nombre de la empresa del usuario',
   })
+  @IsOptional()
+  @IsString()
   company?: string;
 
   @ApiPropertyOptional({
     example: 'reset-token-abc123',
     description: 'Token para restablecer contraseña',
   })
+  @IsOptional()
+  @IsString()
   passwordResetToken?: string;
 
   @ApiPropertyOptional({
     example: '2025-08-07T00:00:00Z',
     description: 'Fecha de expiración del token de restablecimiento',
   })
+  @IsOptional()
   passwordResetExpires?: Date;
 
   @ApiPropertyOptional({
     type: () => [Module],
     description: 'Módulos asociados al usuario',
   })
+  @IsOptional()
+  @IsArray()
   modules?: Module[];
 
   @ApiPropertyOptional({
     type: () => [Rol],
     description: 'Roles asociados al usuario',
   })
+  @IsOptional()
+  @IsArray()
   roles?: Rol[];
 
   @ApiPropertyOptional({
     type: () => [Permission],
     description: 'Permisos asociados al usuario',
   })
+  @IsOptional()
+  @IsArray()
   permissions?: Permission[];
 
   @ApiPropertyOptional({
     example: 'https://app.bponet.com.co',
     description: 'URL de redirección',
   })
+  @IsOptional()
+  @IsString()
   redirectUri?: string;
 }
 

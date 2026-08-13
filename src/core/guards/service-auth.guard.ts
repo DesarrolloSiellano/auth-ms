@@ -39,7 +39,7 @@ export class ServiceAuthGuard implements CanActivate {
   }
 
   private verifyKey(provided: string | undefined): boolean {
-    const expected = this.configService.get<string>('SERVICE_API_KEY');
+    const expected = this.configService.getOrThrow<string>('SERVICE_API_KEY');
     if (!expected || !provided || !this.safeEqual(provided, expected)) {
       throw new UnauthorizedException('Invalid service credentials');
     }

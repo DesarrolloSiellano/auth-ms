@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
@@ -11,9 +11,12 @@ import {
   resolveUserPermissions,
   resolveUserModules,
 } from './helpers/user-resolution.helper';
+import { toPublicUser } from './helpers/user.sanitizer';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectModel('User') private readonly userModel: Model<User>,
     @InjectModel('Rol') private readonly rolModel: Model<any>,
@@ -57,11 +60,11 @@ export class UsersService {
         },
       })
       .catch((error: any) => {
-        console.log('Error sending email:', error);
+        this.logger.error('Error sending email: ' + error?.message, error?.stack);
       });
 
     return {
-      data: result,
+      data: toPublicUser(result.toObject()),
       message: 'User created successfully. Activation email sent.',
       meta: {
         totalData: 1,
@@ -125,14 +128,14 @@ export class UsersService {
         },
       })
       .catch((error: any) => {
-        console.log('Error sending email:', error);
+        this.logger.error('Error sending email: ' + error?.message, error?.stack);
       });
 
     return {
       statusCode: 201,
       status: 'Success',
       message: 'User created successfully. Activation email sent.',
-      data: result,
+      data: toPublicUser(result.toObject()),
       meta: {
         totalData: 1,
         createdAt: new Date().toISOString(),
@@ -151,7 +154,7 @@ export class UsersService {
     if (!users || users.length === 0) {
       throw new NotFoundException('No users found');
     }
-    return users;
+    return users.map((u: any) => toPublicUser(u));
   }
 
   async findActiveByTenant(user?: any, onlyAgents?: unknown) {
@@ -187,7 +190,7 @@ export class UsersService {
       message: 'Active users retrieved by tenant successfully',
       statusCode: 200,
       status: 'Success',
-      data: filtered,
+      data: filtered.map((u: any) => toPublicUser(u)),
       meta: { totalData: filtered.length },
     };
   }
@@ -235,7 +238,7 @@ export class UsersService {
     ]);
 
     return {
-      data: docs,
+      data: docs.map((u: any) => toPublicUser(u)),
       meta: {
         totalData: totalData,
       },
@@ -255,10 +258,8 @@ export class UsersService {
       this.userModel.countDocuments(query).exec(),
     ]);
 
-    console.log(user);
-
     return {
-      data: users,
+      data: users.map((u: any) => toPublicUser(u)),
       meta: {
         totalData,
         page,
@@ -273,7 +274,7 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
-    return user;
+    return toPublicUser(user);
   }
 
   // Si quieres filtrar por fecha de creación, ajusta el DTO y lógica aquí
@@ -312,7 +313,7 @@ export class UsersService {
 
     return {
       message: 'Users retrieved by date range successfully',
-      data: users,
+      data: users.map((u: any) => toPublicUser(u)),
       meta: {
         totalData: users.length,
         startDate: start.toISOString(),
@@ -322,29 +323,23 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    const { ...updateData } = updateUserDto;
-    console.log('prueba');
-
-    console.log('DTO', updateUserDto);
-
     const updatedUser = await this.userModel
-      .findByIdAndUpdate(id, updateData, { new: true })
+      .findByIdAndUpdate(id, updateUserDto, { new: true })
+      .lean()
       .exec();
-
-    console.log('Updated User', updatedUser);
 
     if (!updatedUser) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
-    return updatedUser;
+    return toPublicUser(updatedUser);
   }
 
   async remove(id: string) {
-    const deletedUser = await this.userModel.findByIdAndDelete(id).exec();
+    const deletedUser = await this.userModel.findByIdAndDelete(id).lean().exec();
     if (!deletedUser) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
-    return deletedUser;
+    return toPublicUser(deletedUser);
   }
 
   async getProfile(user: any) {
@@ -353,15 +348,10 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    const identity: any = { ...found };
-    delete identity.password;
-    delete identity.passwordResetToken;
-    delete identity.passwordResetExpires;
-
     return {
       message: 'Profile retrieved successfully',
       data: {
-        user: identity,
+        user: toPublicUser(found),
         modules: found.modules || [],
         roles: found.roles || [],
         permissions: found.permissions || [],

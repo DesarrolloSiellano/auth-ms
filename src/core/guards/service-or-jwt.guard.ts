@@ -49,7 +49,7 @@ export class ServiceOrJwtGuard implements CanActivate {
   }
 
   private verifyKey(provided: string): boolean {
-    const expected = this.configService.get<string>('SERVICE_API_KEY');
+    const expected = this.configService.getOrThrow<string>('SERVICE_API_KEY');
     if (!expected) return false;
     const bufA = Buffer.from(provided);
     const bufB = Buffer.from(expected);

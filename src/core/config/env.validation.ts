@@ -8,6 +8,8 @@ export const envValidationSchema = Joi.object({
   JWT_SECRET: Joi.string().required(),
   JWT_REFRESH_SECRET: Joi.string().required(),
   JWT_EXPIRATION: Joi.string().default('30d'),
+  JWT_ACCESS_EXPIRATION: Joi.string().default('1h'),
+  JWT_REFRESH_EXPIRATION: Joi.string().default('7d'),
   MICROSERVICE_HOST: Joi.string().default('127.0.0.1'),
   MICROSERVICE_PORT: Joi.number().default(3011),
 

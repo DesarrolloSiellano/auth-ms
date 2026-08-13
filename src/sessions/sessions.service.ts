@@ -1,29 +1,29 @@
 import { Injectable } from '@nestjs/common';
-import { CreateSessionDto } from './dto/create-session.dto';
-import { UpdateSessionDto } from './dto/update-session.dto';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Session } from './entities/session.entity';
 
 @Injectable()
 export class SessionsService {
-  create(createSessionDto: CreateSessionDto) {
-    return {
-      message: 'This action adds a new session',
-      data: createSessionDto,
-    };
+  constructor(
+    @InjectModel('Session') private readonly sessionModel: Model<Session>,
+  ) {}
+
+  async createSession(data: Partial<Session>): Promise<Session> {
+    const session = new this.sessionModel(data);
+    return session.save();
   }
 
-  findAll() {
-    return [];
+  async findActiveByRefreshHash(hash: string): Promise<Session | null> {
+    return this.sessionModel
+      .findOne({ refreshToken: hash, isActive: true })
+      .lean()
+      .exec();
   }
 
-  findOne(id: number) {
-    return { id };
-  }
-
-  update(id: number, updateSessionDto: UpdateSessionDto) {
-    return { id, ...updateSessionDto };
-  }
-
-  remove(id: number) {
-    return { id, deleted: true };
+  async deactivateByRefreshHash(hash: string): Promise<void> {
+    await this.sessionModel
+      .updateOne({ refreshToken: hash, isActive: true }, { isActive: false })
+      .exec();
   }
 }

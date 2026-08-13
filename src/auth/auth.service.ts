@@ -14,19 +14,18 @@ import { User } from 'src/users/entities/user.entity';
 import { JwtService } from '@nestjs/jwt';
 import * as generatePassword from 'generate-password';
 import { MailService } from 'src/mail/mail.service';
-import { Session } from 'src/sessions/entities/session.entity';
+import { SessionsService } from 'src/sessions/sessions.service';
 import * as crypto from 'crypto';
 import { SetPasswordWithToken } from './dto/auth.dto';
 import { buildIdentityPayload } from './helpers/identity-payload.helper';
 
 @Injectable()
 export class AuthService {
-  url = 'https://app.bponet.com.co';
   constructor(
     private readonly encryptionService: EncryptionService,
     private readonly jwtService: JwtService,
     @InjectModel('User') private readonly userModel: Model<User>,
-    @InjectModel('Session') private readonly sessionModel: Model<Session>,
+    private readonly sessionsService: SessionsService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
   ) {}
@@ -86,11 +85,10 @@ export class AuthService {
       istable: meta?.istable || false,
       ismovil: meta?.ismovil || false,
       isbrowser: meta?.isbrowser || false,
-      refreshToken, // Store the refresh token
+      refreshToken: this.hashToken(refreshToken), // Store hashed refresh token
     };
 
-    const newSession = new this.sessionModel(session);
-    await newSession.save();
+    await this.sessionsService.createSession(session as any);
 
     return {
       message: 'Login successful',
@@ -106,16 +104,15 @@ export class AuthService {
 
   async refreshAccessToken(refreshToken: string) {
     try {
-      // 1. Verify Refresh Token
-      /*  const payload = this.jwtService.verify(refreshToken, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      }); */
+      // 1. Verificar firma y expiración del refresh token
+      this.jwtService.verify(refreshToken, {
+        secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
+      });
 
-      // 2. Find Session and User
-      const session = await this.sessionModel
-        .findOne({ refreshToken, isActive: true })
-        .lean()
-        .exec();
+      // 2. Buscar la sesión por el hash del token
+      const session = await this.sessionsService.findActiveByRefreshHash(
+        this.hashToken(refreshToken),
+      );
 
       if (!session) {
         throw new ForbiddenException('Invalid or expired refresh token');
@@ -143,9 +140,18 @@ export class AuthService {
         payload: newPayload,
       };
     } catch (error) {
-      console.log(error, error);
+      // Si el refresh token expiró, desactivamos la sesión (mejor esfuerzo)
+      if (error?.name === 'TokenExpiredError') {
+        this.sessionsService
+          .deactivateByRefreshHash(this.hashToken(refreshToken))
+          .catch(() => undefined);
+      }
       throw new ForbiddenException('Invalid refresh token');
     }
+  }
+
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
   }
 
   async recoveryPassword(recovery: RecoveryPassword, redirectUri: string) {
@@ -158,9 +164,7 @@ export class AuthService {
         throw new NotFoundException('Usuario no encontrado');
       }
 
-      if (redirectUri) {
-        this.url = redirectUri;
-      }
+      const loginUrl = redirectUri || 'https://app.bponet.com.co';
 
       // Generar contraseña temporal segura
       const tempPassword = generatePassword.generate({
@@ -197,7 +201,7 @@ export class AuthService {
           name: result.name,
           platform_name: 'BpoNet',
           temporary_password: tempPassword, // si tienes la contraseña original aquí (revisar seguridad)
-          login_url: this.url, // url de login real de tu app
+          login_url: loginUrl, // url de login real de tu app
         },
       });
 
@@ -211,7 +215,6 @@ export class AuthService {
   }
 
   async changePassword(changePassword: ChangePassword) {
-    console.log(changePassword);
     try {
       const userDB = await this.userModel
         .findOne({ _id: changePassword.id })
@@ -283,7 +286,8 @@ export class AuthService {
 
   private getJwtToken(payload: any, secret?: string, expiresIn?: string) {
     return this.jwtService.sign(payload, {
-      secret: secret || this.configService.get<string>('JWT_SECRET'),
+      secret:
+        secret || this.configService.getOrThrow<string>('JWT_SECRET'),
       expiresIn:
         expiresIn || this.configService.get<string>('JWT_EXPIRATION', '30d'),
     });

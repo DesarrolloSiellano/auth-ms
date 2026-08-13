@@ -123,7 +123,12 @@ export class UsersController {
 
   @Get('findByTenant')
   @UseGuards(ServiceOrJwtGuard)
-  @ApiOperation({ summary: 'Obtener usuarios y agentes activos por tenant/empresa' })
+  @ApiOperation({
+    summary: 'Obtener usuarios y agentes activos por tenant/empresa',
+    description:
+      'Acepta JWT de usuario (Bearer) O clave de servicio. Para llamadas de servicio envía ' +
+      'header x-service-key (SERVICE_API_KEY) y x-company-id / x-tenant-id (obligatorios para acotar el tenant).',
+  })
   @ApiQuery({
     name: 'onlyAgents',
     required: false,
@@ -160,7 +165,8 @@ export class UsersController {
     description:
       'Recibe el JWT ligero en Authorization: Bearer y devuelve en el cuerpo de la ' +
       'respuesta la identidad junto al árbol completo de modules, roles y permissions. ' +
-      'Este endpoint reemplaza la necesidad de incrustar autorización en el token.',
+      'Este endpoint reemplaza la necesidad de incrustar autorización en el token. ' +
+      'Para llamadas de servicio: header x-service-key (SERVICE_API_KEY) + x-user-id o query param userId.',
   })
   @ApiResponse({
     status: 200,
@@ -249,6 +255,8 @@ export class UsersController {
   @UseGuards(ServiceOrJwtGuard)
   @ApiOperation({
     summary: 'Obtener el árbol de módulos del usuario autenticado',
+    description:
+      'Acepta JWT (Bearer) o servicio (x-service-key + x-user-id o ?userId=).',
   })
   @ApiResponse({
     status: 200,
@@ -278,7 +286,11 @@ export class UsersController {
 
   @Get('profile/roles')
   @UseGuards(ServiceOrJwtGuard)
-  @ApiOperation({ summary: 'Obtener los roles del usuario autenticado' })
+  @ApiOperation({
+    summary: 'Obtener los roles del usuario autenticado',
+    description:
+      'Acepta JWT (Bearer) o servicio (x-service-key + x-user-id o ?userId=).',
+  })
   @ApiResponse({
     status: 200,
     description: 'Roles completos con permisos embebidos',
@@ -307,7 +319,11 @@ export class UsersController {
 
   @Get('profile/permissions')
   @UseGuards(ServiceOrJwtGuard)
-  @ApiOperation({ summary: 'Obtener los permisos del usuario autenticado' })
+  @ApiOperation({
+    summary: 'Obtener los permisos del usuario autenticado',
+    description:
+      'Acepta JWT (Bearer) o servicio (x-service-key + x-user-id o ?userId=).',
+  })
   @ApiResponse({
     status: 200,
     description: 'Permisos completos',
@@ -345,31 +361,6 @@ export class UsersController {
       return { _id: target };
     }
     return req.user;
-  }
-
-  @Get(':id')
-  @UseGuards(AuthGuard('jwt'))
-  @UseGuards(ValidateObjectIdGuard)
-  @ApiOperation({ summary: 'Obtener un usuario por ID' })
-  @ApiParam({ name: 'id', description: 'ID del usuario' })
-  @ApiResponse({
-    status: 200,
-    description: 'Usuario encontrado',
-    schema: {
-      example: {
-        message: 'User retrieved successfully',
-        statusCode: 200,
-        status: 'Success',
-        data: {
-          /* objeto usuario */
-        },
-        meta: { totalData: 1 },
-      },
-    },
-  })
-  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  findById(@Param('id') id: string) {
-    return this.usersService.findOne(id);
   }
 
   @Get('findByDate')
@@ -413,6 +404,31 @@ export class UsersController {
   ) {
     const user = req.user;
     return this.usersService.findByDate(user, startDate, endDate);
+  }
+
+  @Get(':id')
+  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(ValidateObjectIdGuard)
+  @ApiOperation({ summary: 'Obtener un usuario por ID' })
+  @ApiParam({ name: 'id', description: 'ID del usuario' })
+  @ApiResponse({
+    status: 200,
+    description: 'Usuario encontrado',
+    schema: {
+      example: {
+        message: 'User retrieved successfully',
+        statusCode: 200,
+        status: 'Success',
+        data: {
+          /* objeto usuario */
+        },
+        meta: { totalData: 1 },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  findById(@Param('id') id: string) {
+    return this.usersService.findOne(id);
   }
 
   @Put(':id')
@@ -554,6 +570,10 @@ export class UsersController {
     description: `
 Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
 **No enviar datos reales aquí; la comunicación real es por sockets TCP.**
+
+**Autenticación entre servicios (obligatoria):** todo payload TCP debe incluir
+\`serviceKey\` con el valor de \`SERVICE_API_KEY\`. Los handlers que antes recibían
+una primitiva (\`id\`) ahora reciben \`{ serviceKey, id }\`.
 
 Ejemplos de uso:
 \`@MessagePattern({ cmd: 'createUser' })\`

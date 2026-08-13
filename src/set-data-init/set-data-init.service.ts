@@ -294,7 +294,15 @@ export class SetDataInit implements OnApplicationBootstrap {
       /**
        * Crear admins si no existen
        */
-      await this.createAdminUsers();
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.warn(
+          'NODE_ENV=production: NO se crean usuarios admin por defecto. ' +
+            'Crea el superadmin inicial manualmente con: npm run script:create-admin ' +
+            '(requiere ADMIN_EMAIL y ADMIN_PASSWORD).',
+        );
+      } else {
+        await this.createAdminUsers();
+      }
 
       this.logger.log('Initial data validation completed successfully.');
     } catch (error) {

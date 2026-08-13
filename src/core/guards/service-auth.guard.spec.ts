@@ -8,6 +8,9 @@ describe('ServiceAuthGuard', () => {
     get: jest.fn((key: string) =>
       key === 'SERVICE_API_KEY' ? 'secreto-compartido' : undefined,
     ),
+    getOrThrow: jest.fn((key: string) =>
+      key === 'SERVICE_API_KEY' ? 'secreto-compartido' : undefined,
+    ),
   };
 
   const reflectorMock = {
@@ -52,5 +55,31 @@ describe('ServiceAuthGuard', () => {
       switchToHttp: () => ({ getRequest: () => ({ headers: {} }) }),
     };
     expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('exige la clave en rutas HTTP marcadas con @ServiceRoute()', () => {
+    reflectorMock.getAllAndOverride.mockReturnValue(true);
+    const ctx = {
+      getType: () => 'http',
+      getHandler: () => ({}),
+      getClass: () => ({}),
+      switchToHttp: () => ({
+        getRequest: () => ({ headers: { 'x-service-key': 'secreto-compartido' } }),
+      }),
+    };
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('rechaza la clave inválida en rutas HTTP marcadas', () => {
+    reflectorMock.getAllAndOverride.mockReturnValue(true);
+    const ctx = {
+      getType: () => 'http',
+      getHandler: () => ({}),
+      getClass: () => ({}),
+      switchToHttp: () => ({
+        getRequest: () => ({ headers: { 'x-service-key': 'clave-mala' } }),
+      }),
+    };
+    expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
   });
 });
