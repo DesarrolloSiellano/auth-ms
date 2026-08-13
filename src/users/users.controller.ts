@@ -27,6 +27,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
+import { ServiceOrJwtGuard } from 'src/core/guards/service-or-jwt.guard';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -121,8 +122,13 @@ export class UsersController {
   }
 
   @Get('findByTenant')
-  @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: 'Obtener usuarios y agentes activos por tenant/empresa' })
+  @UseGuards(ServiceOrJwtGuard)
+  @ApiOperation({
+    summary: 'Obtener usuarios y agentes activos por tenant/empresa',
+    description:
+      'Acepta JWT de usuario (Bearer) O clave de servicio. Para llamadas de servicio envía ' +
+      'header x-service-key (SERVICE_API_KEY) y x-company-id / x-tenant-id (obligatorios para acotar el tenant).',
+  })
   @ApiQuery({
     name: 'onlyAgents',
     required: false,
@@ -144,32 +150,217 @@ export class UsersController {
   })
   findByTenant(@Req() req: any, @Query('onlyAgents') onlyAgents?: string) {
     const user = req.user;
+    if (user?.isService && !user.company && !user.tenantId) {
+      throw new UnauthorizedException(
+        'Para llamadas de servicio, envía los headers x-company-id / x-tenant-id',
+      );
+    }
     return this.usersService.findActiveByTenant(user, onlyAgents);
   }
 
-  @Get(':id')
-  @UseGuards(AuthGuard('jwt'))
-  @UseGuards(ValidateObjectIdGuard)
-  @ApiOperation({ summary: 'Obtener un usuario por ID' })
-  @ApiParam({ name: 'id', description: 'ID del usuario' })
+  @Get('profile')
+  @UseGuards(ServiceOrJwtGuard)
+  @ApiOperation({
+    summary: 'Obtener el perfil completo del usuario autenticado',
+    description:
+      'Recibe el JWT ligero en Authorization: Bearer y devuelve en el cuerpo de la ' +
+      'respuesta la identidad junto al árbol completo de modules, roles y permissions. ' +
+      'Este endpoint reemplaza la necesidad de incrustar autorización en el token. ' +
+      'Para llamadas de servicio: header x-service-key (SERVICE_API_KEY) + x-user-id o query param userId.',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Usuario encontrado',
+    description: 'Perfil del usuario con modules/roles/permissions',
     schema: {
       example: {
-        message: 'User retrieved successfully',
+        message: 'Profile retrieved successfully',
         statusCode: 200,
         status: 'Success',
         data: {
-          /* objeto usuario */
+          user: {
+            _id: 'id-usuario',
+            name: 'Juan',
+            lastName: 'Pérez',
+            email: 'juan@mail.com',
+            username: 'juanp',
+            phone: '+573001234567',
+            company: 'EmpresaX',
+            tenantId: '000000',
+            isActived: true,
+            isAdmin: true,
+            isSuperAdmin: false,
+            isNewUser: false,
+          },
+          modules: [
+            {
+              _id: 'id-modulo',
+              name: 'adminUserModule',
+              description: 'Module for admin user functionalities',
+              isActive: true,
+              isSystemModule: true,
+              routes: [
+                {
+                  name: 'Pages',
+                  path: '/pages',
+                  initPath: '/pages/dashboard',
+                  icon: 'layout',
+                  isActive: true,
+                  children: [
+                    {
+                      name: 'Dashboard',
+                      path: '/pages/dashboard',
+                      icon: 'home',
+                      isActive: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          roles: [
+            {
+              name: 'Administrador',
+              codeRol: 'ADM',
+              description: 'Acceso completo al sistema',
+              isActive: true,
+              isInheritPermissions: false,
+              permissions: [
+                {
+                  name: 'Crear',
+                  description: 'Permite registrar nuevos datos',
+                  action: 'create',
+                  isActive: true,
+                },
+              ],
+            },
+          ],
+          permissions: [
+            {
+              name: 'Crear',
+              description: 'Permite registrar nuevos datos en el sistema',
+              action: 'create',
+              isActive: true,
+            },
+          ],
         },
-        meta: { totalData: 1 },
+        meta: { totalData: 1, id: 'id-usuario' },
       },
     },
   })
-  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  findById(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  profile(@Req() req: any, @Query('userId') userId?: string) {
+    return this.usersService.getProfile(this.resolveProfileId(req, userId));
+  }
+
+  @Get('profile/modules')
+  @UseGuards(ServiceOrJwtGuard)
+  @ApiOperation({
+    summary: 'Obtener el árbol de módulos del usuario autenticado',
+    description:
+      'Acepta JWT (Bearer) o servicio (x-service-key + x-user-id o ?userId=).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Módulos con sus rutas, hijos e íconos',
+    schema: {
+      example: {
+        message: 'Modules retrieved successfully',
+        statusCode: 200,
+        status: 'Success',
+        data: [
+          {
+            _id: 'id-modulo',
+            name: 'adminUserModule',
+            description: 'Module for admin user functionalities',
+            isActive: true,
+            isSystemModule: true,
+            routes: [],
+          },
+        ],
+        meta: { totalData: 1, id: 'id-usuario' },
+      },
+    },
+  })
+  profileModules(@Req() req: any, @Query('userId') userId?: string) {
+    return this.usersService.getUserModules(this.resolveProfileId(req, userId));
+  }
+
+  @Get('profile/roles')
+  @UseGuards(ServiceOrJwtGuard)
+  @ApiOperation({
+    summary: 'Obtener los roles del usuario autenticado',
+    description:
+      'Acepta JWT (Bearer) o servicio (x-service-key + x-user-id o ?userId=).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Roles completos con permisos embebidos',
+    schema: {
+      example: {
+        message: 'Roles retrieved successfully',
+        statusCode: 200,
+        status: 'Success',
+        data: [
+          {
+            name: 'Administrador',
+            codeRol: 'ADM',
+            description: 'Acceso completo al sistema',
+            isActive: true,
+            isInheritPermissions: false,
+            permissions: [],
+          },
+        ],
+        meta: { totalData: 1, id: 'id-usuario' },
+      },
+    },
+  })
+  profileRoles(@Req() req: any, @Query('userId') userId?: string) {
+    return this.usersService.getUserRoles(this.resolveProfileId(req, userId));
+  }
+
+  @Get('profile/permissions')
+  @UseGuards(ServiceOrJwtGuard)
+  @ApiOperation({
+    summary: 'Obtener los permisos del usuario autenticado',
+    description:
+      'Acepta JWT (Bearer) o servicio (x-service-key + x-user-id o ?userId=).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Permisos completos',
+    schema: {
+      example: {
+        message: 'Permissions retrieved successfully',
+        statusCode: 200,
+        status: 'Success',
+        data: [
+          {
+            name: 'Crear',
+            description: 'Permite registrar nuevos datos en el sistema',
+            action: 'create',
+            isActive: true,
+          },
+        ],
+        meta: { totalData: 1, id: 'id-usuario' },
+      },
+    },
+  })
+  profilePermissions(@Req() req: any, @Query('userId') userId?: string) {
+    return this.usersService.getUserPermissions(
+      this.resolveProfileId(req, userId),
+    );
+  }
+
+  private resolveProfileId(req: any, userId?: string) {
+    if (req.user?.isService) {
+      const target = req.headers?.['x-user-id'] || userId;
+      if (!target) {
+        throw new UnauthorizedException(
+          'Para llamadas de servicio, envía x-user-id o el query param userId',
+        );
+      }
+      return { _id: target };
+    }
+    return req.user;
   }
 
   @Get('findByDate')
@@ -213,6 +404,31 @@ export class UsersController {
   ) {
     const user = req.user;
     return this.usersService.findByDate(user, startDate, endDate);
+  }
+
+  @Get(':id')
+  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(ValidateObjectIdGuard)
+  @ApiOperation({ summary: 'Obtener un usuario por ID' })
+  @ApiParam({ name: 'id', description: 'ID del usuario' })
+  @ApiResponse({
+    status: 200,
+    description: 'Usuario encontrado',
+    schema: {
+      example: {
+        message: 'User retrieved successfully',
+        statusCode: 200,
+        status: 'Success',
+        data: {
+          /* objeto usuario */
+        },
+        meta: { totalData: 1 },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  findById(@Param('id') id: string) {
+    return this.usersService.findOne(id);
   }
 
   @Put(':id')
@@ -320,8 +536,14 @@ export class UsersController {
   }
 
   @MessagePattern({ cmd: 'findUserById' })
-  msFindById(@Payload() id: string) {
+  msFindById(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.usersService.findOne(id);
+  }
+
+  @MessagePattern({ cmd: 'getUserProfile' })
+  msGetUserProfile(@Payload() payload: any) {
+    return this.usersService.getProfile(payload);
   }
 
   @MessagePattern({ cmd: 'findUsersByDate' })
@@ -337,7 +559,8 @@ export class UsersController {
   }
 
   @MessagePattern({ cmd: 'removeUser' })
-  msRemove(@Payload() id: string) {
+  msRemove(@Payload() payload: any) {
+    const id = payload?.id ?? payload;
     return this.usersService.remove(id);
   }
 
@@ -347,6 +570,10 @@ export class UsersController {
     description: `
 Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
 **No enviar datos reales aquí; la comunicación real es por sockets TCP.**
+
+**Autenticación entre servicios (obligatoria):** todo payload TCP debe incluir
+\`serviceKey\` con el valor de \`SERVICE_API_KEY\`. Los handlers que antes recibían
+una primitiva (\`id\`) ahora reciben \`{ serviceKey, id }\`.
 
 Ejemplos de uso:
 \`@MessagePattern({ cmd: 'createUser' })\`

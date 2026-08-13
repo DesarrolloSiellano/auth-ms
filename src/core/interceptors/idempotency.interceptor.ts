@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   CallHandler,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
@@ -11,6 +12,8 @@ import { IdempotencyService } from '../idempotency/idempotency.service';
 
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(IdempotencyInterceptor.name);
+
   constructor(private readonly idempotencyService: IdempotencyService) {}
 
   async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<any>> {
@@ -57,7 +60,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
         this.idempotencyService
           .saveKey(idempotencyKey, method, url, response)
           .catch((error) => {
-            console.error('Error saving idempotency key:', error);
+            this.logger.error(
+              `Error saving idempotency key: ${error?.message}`,
+              error?.stack,
+            );
           });
       }),
     );

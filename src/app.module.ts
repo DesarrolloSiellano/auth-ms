@@ -23,9 +23,11 @@ import { envValidationSchema } from './core/config/env.validation';
 import { TenantMiddleware } from './core/database/tenant.middleware';
 import { IdempotencyModule } from './core/idempotency/idempotency.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD } from '@nestjs/core';
 import { ResponseInterceptor } from './core/interceptors/response.interceptor';
 import { IdempotencyInterceptor } from './core/interceptors/idempotency.interceptor';
 import { RpcIdempotencyInterceptor } from './core/interceptors/RCPIdempotency.interceptor';
+import { ServiceAuthGuard } from './core/guards/service-auth.guard';
 
 @Module({
   imports: [
@@ -100,6 +102,10 @@ import { RpcIdempotencyInterceptor } from './core/interceptors/RCPIdempotency.in
     {
       provide: APP_INTERCEPTOR,
       useClass: RpcIdempotencyInterceptor,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ServiceAuthGuard,
     },
     {
       provide: APP_INTERCEPTOR,

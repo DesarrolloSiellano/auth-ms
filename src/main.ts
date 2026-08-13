@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
@@ -7,7 +8,8 @@ import { HttpExceptionFilter } from './core/filters/http-exception.filter';
 import { Logger } from 'nestjs-pino';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-async function bootstrap() {
+
+export async function bootstrap() {
   // Antes de crear la app, copia la carpeta de templates si no existe en dist
   const srcTemplates = path.resolve(process.cwd(), 'src', 'mail', 'templates');
   const distTemplates = path.resolve(
@@ -41,8 +43,16 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // Configuración de CORS
+  const corsOrigin = configService.get<string>('CORS_ORIGIN', '*');
+  const corsOrigins =
+    corsOrigin === '*'
+      ? corsOrigin
+      : corsOrigin
+          .split(',')
+          .map((o) => o.trim())
+          .filter((o) => o !== '');
   app.enableCors({
-    origin: configService.get<string>('CORS_ORIGIN', '*'),
+    origin: corsOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     allowedHeaders: ['Content-Type', 'Authorization', 'x-idempotency-key'],
     credentials: false,
@@ -50,6 +60,16 @@ async function bootstrap() {
 
   // Global Filters (Interceptors are registered globally in AppModule)
   app.useGlobalFilters(new HttpExceptionFilter());
+
+  // Validación global de entrada (DTOs). whitelist elimina campos no declarados
+  // para prevenir over-posting / mass-assignment.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: false },
+    }),
+  );
 
   // Swagger/OpenAPI Configuración
   const swaggerConfig = new DocumentBuilder()
@@ -69,6 +89,15 @@ La documentación Swagger incluye:
 - La descripción y ejemplos completos para todos los endpoints REST.  
 - Documentación especial (a través de endpoints de solo lectura) que describe los patrones y payloads TCP disponibles para microservicios, como referencia para desarrolladores e integradores.
 
+**Autenticación:**
+
+1. **JWT de usuario (REST):** Header \`Authorization: Bearer <access_token>\`. El token contiene SOLO identidad
+   (\`_id\`, \`name\`, \`email\`, \`company\`, \`tenantId\`, \`isSuperAdmin\`). El árbol de autorización
+   (modules/roles/permissions) se obtiene vía \`GET /api/users/profile\`.
+2. **Clave de servicio (REST opt-in):** header \`x-service-key\` (valor de \`SERVICE_API_KEY\`) en rutas como
+   \`profile\` y \`findByTenant\` (más \`x-company-id\`/\`x-tenant-id\`/\`x-user-id\` según la ruta).
+3. **Microservicios TCP:** todos los \`@MessagePattern\` exigen \`serviceKey\` en el payload.
+
 Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo mejor de los APIs REST para consumo público y microservicios TCP para comunicación interna.`,
     )
     .addBearerAuth({
@@ -80,15 +109,39 @@ Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo m
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  document.servers = [{ url: '/auth/' }];
   SwaggerModule.setup('api-docs', app, document); // http://localhost:PORT/api-docs
 
-  // Microservicio TCP
+  // Microservicio TCP (con TLS/mTLS opcional vía entorno)
+  const tlsEnabled = configService.get<string>('TLS_ENABLED', 'false') === 'true';
+  const tlsMutual = configService.get<string>('TLS_MUTUAL', 'false') === 'true';
+
+  let tlsOptions: any;
+  if (tlsEnabled) {
+    const keyPath = configService.get<string>('TLS_KEY_PATH');
+    const certPath = configService.get<string>('TLS_CERT_PATH');
+    const caPath = configService.get<string>('TLS_CA_PATH');
+
+    if (!keyPath || !certPath) {
+      throw new Error(
+        'TLS_ENABLED=true requiere TLS_KEY_PATH y TLS_CERT_PATH configurados',
+      );
+    }
+
+    tlsOptions = {
+      key: fsExtra.readFileSync(keyPath),
+      cert: fsExtra.readFileSync(certPath),
+      ...(caPath ? { ca: fsExtra.readFileSync(caPath) } : {}),
+      requestCert: tlsMutual,
+      rejectUnauthorized: tlsMutual,
+    };
+  }
+
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.TCP,
     options: {
       host: configService.get<string>('MICROSERVICE_HOST', '127.0.0.1'),
       port: configService.get<number>('MICROSERVICE_PORT', 3011),
+      ...(tlsEnabled && tlsOptions ? { tls: tlsOptions } : {}),
     },
   });
 
@@ -99,4 +152,8 @@ Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo m
   logger.log(`Servidor REST: ${await app.getUrl()}`);
   logger.log(`Swagger docs: ${await app.getUrl()}/api-docs`);
 }
-bootstrap();
+
+// Solo se ejecuta cuando se lanza directamente (node dist/main), no al importar.
+if (require.main === module) {
+  bootstrap();
+}

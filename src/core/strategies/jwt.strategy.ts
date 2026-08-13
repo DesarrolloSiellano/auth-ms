@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { User } from 'src/users/entities/user.entity';
+import { toPublicUser } from 'src/users/helpers/user.sanitizer';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
@@ -15,7 +16,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     @InjectModel('User') private readonly userModel: Model<User>,
   ) {
     super({
-      secretOrKey: configService.get('JWT_SECRET'),
+      secretOrKey: configService.getOrThrow('JWT_SECRET'),
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
     });
   }
@@ -32,6 +33,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         'User is not active, please talk to the administrator',
       );
     }
-    return user;
+    return toPublicUser(user) as User;
   }
 }

@@ -147,11 +147,13 @@ UserSchema.index({ company: 1, phone: 1 });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 addTenantIndexes(UserSchema, ['email']);
 
-UserSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next(); // Si no se ha modificado la contraseña, continúa
-  const salt = await bcrypt.genSalt(10); // Genera un nuevo salt (10 rounds por defecto)
-  this.password = await bcrypt.hash(this.password, salt); // Encripta la contraseña
+export async function hashPasswordIfModified(this: any, next: any) {
+  if (!this.isModified('password')) return next();
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
   next();
-});
+}
+
+UserSchema.pre('save', hashPasswordIfModified);
 
 export const UserModel = model<User>('User', UserSchema);

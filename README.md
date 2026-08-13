@@ -70,6 +70,46 @@ $ mau deploy
 
 With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
 
+---
+
+## Documentación del proyecto
+
+### Autenticación de servicios (canal TCP y REST interno)
+
+El microservicio usa un **secreto compartido** para autenticar llamadas entre servicios:
+
+- **Variable:** `SERVICE_API_KEY` (obligatoria, fail-fast en `env.validation.ts`).
+- **Canal TCP (`@MessagePattern`):** todo payload debe incluir `serviceKey`. Los handlers que antes recibían una primitiva (`id`, `token`) ahora reciben `{ serviceKey, id }` / `{ serviceKey, token }`.
+- **REST con acceso de servicio:** rutas opt-in (p. ej. `GET /api/users/profile`, `GET /api/users/findByTenant`) aceptan el header `x-service-key`. En `findByTenant` se exigen además `x-company-id` / `x-tenant-id`; en `profile` se envía `x-user-id` o `?userId=`.
+- **Comparación** en tiempo constante (`crypto.timingSafeEqual`).
+
+Ver `ESTRATEGIA_SEGURIDAD_TCP.md` para la estrategia completa (TLS/mTLS, red, etc.).
+
+### Crear usuario superadmin en producción
+
+En producción el seed automático **NO** crea administradores por defecto (evita credenciales públicas como `admin@admin.com` / `admin`). Para crear el primer superadmin de forma controlada:
+
+```bash
+# Con la app compilada (recomendado en producción)
+MONGO_URI="mongodb://..." \
+ADMIN_EMAIL="admin@empresa.com" \
+ADMIN_PASSWORD="clave-fuerte" \
+node dist/set-data-init/scripts/create-superadmin.js
+
+# En desarrollo (ts-node)
+ADMIN_EMAIL="admin@empresa.com" ADMIN_PASSWORD="clave-fuerte" npm run script:create-admin
+```
+
+Variables opcionales: `ADMIN_NAME`, `ADMIN_LASTNAME`, `ADMIN_USERNAME` (por defecto `admin`, `admin`, `ADMIN_EMAIL`). El usuario se crea con `isNewUser: true` para forzar el cambio de contraseña en el primer inicio de sesión. Si el usuario ya existe, el script no hace nada.
+
+### Validación de entrada
+
+Se usa `ValidationPipe` global (`whitelist: true`, `transform: true`): los campos no declarados en los DTOs se eliminan automáticamente (anti mass-assignment). Requiere `class-validator`/`class-transformer` (ya instalados).
+
+### Swagger
+
+La documentación interactiva se sirve en `/api-docs` (requiere tener el servicio levantado).
+
 ## Resources
 
 Check out a few resources that may come in handy when working with NestJS:

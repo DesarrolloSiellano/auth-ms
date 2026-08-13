@@ -1,4 +1,7 @@
 import { Model } from 'mongoose';
+import { Logger } from '@nestjs/common';
+
+const logger = new Logger('UserResolution');
 
 export async function resolveUserRoles(
   payload: any,
@@ -61,7 +64,7 @@ export async function resolveUserRoles(
       });
     }
   } catch (error) {
-    console.error('Error resolving roles:', error);
+    logger.error(`Error resolving roles: ${error?.message}`, error?.stack);
   }
   return userRoles;
 }
@@ -117,7 +120,7 @@ export async function resolveUserPermissions(
       }
     }
   } catch (error) {
-    console.error('Error resolving permissions:', error);
+    logger.error(`Error resolving permissions: ${error?.message}`, error?.stack);
   }
   return userPermissions;
 }
@@ -242,7 +245,7 @@ export async function resolveUserModules(
       userModules.push(...activeModules);
     }
   } catch (error) {
-    console.error('Error resolving modules:', error);
+    logger.error(`Error resolving modules: ${error?.message}`, error?.stack);
   }
   return userModules;
 }

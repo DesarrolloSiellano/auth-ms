@@ -9,6 +9,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
@@ -33,28 +34,39 @@ import { UserPayload } from 'src/core/interfaces/user-payload.interface';
 import { AuthGuard } from '@nestjs/passport';
 import { JwtTCPStrategy } from 'src/core/strategies/jwtTCP.strategy';
 import { RealIP } from 'nestjs-real-ip';
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('auth')
 @Controller('auth')
 @UseGuards(ThrottlerHybridGuard)
 export class AuthController {
-  private readonly whitelist = [
-    'app.bponet.com.co',
-    'localhost',
-    'campaign.bponet.com.co',
-    'educative.bponet.com.co',
-    'helpdesk.bponet.com.co',
-  ];
+  private readonly logger = new Logger(AuthController.name);
+  private readonly whitelist: string[];
 
   constructor(
     private readonly authService: AuthService,
     private jwtTCPStrategy: JwtTCPStrategy,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.whitelist = (
+      this.configService.get<string>('SSO_ALLOWED_ORIGINS') ?? ''
+    )
+      .split(',')
+      .map((domain) => domain.trim())
+      .filter((domain) => domain !== '');
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({ summary: 'Iniciar sesión y obtener token JWT' })
+  @ApiOperation({
+    summary: 'Iniciar sesión y obtener token JWT',
+    description:
+      'El JWT de acceso contiene SOLO identidad (_id, name, email, company, tenantId, ...) — ' +
+      'no modules/roles/permissions. Tras el login, consume el árbol de autorización vía ' +
+      'GET /api/users/profile. Si se envía redirectUri (origen en la whitelist SSO_ALLOWED_ORIGINS), ' +
+      'se redirige con ?access_token= y ?refresh_token=.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Inicio de sesión exitoso',
@@ -71,13 +83,10 @@ export class AuthController {
             lastName: 'Pérez',
             email: 'juan@mail.com',
             username: 'juanp',
-            date_joined: '2025-08-06T12:00:00Z',
             isActived: true,
-            isAdmin: false,
             company: 'EmpresaX',
-            modules: ['mod1', 'mod2'],
-            roles: ['Admin', 'Editor'],
-            permissions: ['create', 'read', 'update'],
+            tenantId: '000000',
+            isSuperAdmin: false,
           },
           totalData: 1,
           token: 'jwt.token.aqui',
@@ -114,7 +123,7 @@ export class AuthController {
         }
       } catch (e) {
         // En caso de que redirectUri no sea una URL válida, ignorar redirección
-        console.log('Error redirectUri', e);
+        this.logger.warn(`Error redirectUri: ${e?.message}`);
       }
     }
 
@@ -149,7 +158,14 @@ export class AuthController {
   }
 
   @Post('change-password')
-  @ApiOperation({ summary: 'Cambiar contraseña' })
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cambiar contraseña (requiere JWT)',
+    description:
+      'Requiere Authorization: Bearer <token>. El _id se toma del token (el campo id del body se ignora). ' +
+      'Verifica la contraseña actual y guarda la nueva (hasheada con bcrypt).',
+  })
   @ApiResponse({
     status: 200,
     description: 'Cambio de contraseña exitoso ',
@@ -165,10 +181,12 @@ export class AuthController {
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
+  @ApiResponse({ status: 401, description: 'Token inválido o credenciales inválidas' })
   @ApiResponse({ status: 400, description: 'Error al cambiar contraseña' })
   @ApiBody({ type: ChangePassword })
-  changePassword(@Body() changePassword: ChangePassword) {
+  changePassword(@Body() changePassword: ChangePassword, @Req() req: any) {
+    // El _id siempre proviene del token, nunca del body
+    changePassword.id = req.user._id;
     return this.authService.changePassword(changePassword);
   }
 
@@ -267,8 +285,35 @@ export class AuthController {
 
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('refresh')
-  @ApiOperation({ summary: 'Refrescar token de acceso' })
-  @ApiResponse({ status: 200, description: 'Token refrescado correctamente' })
+  @ApiOperation({
+    summary: 'Refrescar token de acceso',
+    description:
+      'Verifica la firma/expiración del refresh token (JWT_REFRESH_SECRET), localiza la sesión activa por su hash y ' +
+      'emite un nuevo access token con el payload de identidad. Los refresh tokens se almacenan hasheados (sha256).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Token refrescado correctamente',
+    schema: {
+      example: {
+        statusCode: 200,
+        status: 'Success',
+        message: 'Token refreshed successfully',
+        accessToken: 'jwt.token.aqui',
+        payload: {
+          _id: 'id-usuario',
+          name: 'Juan',
+          lastName: 'Pérez',
+          email: 'juan@mail.com',
+          username: 'juanp',
+          isActived: true,
+          company: 'EmpresaX',
+          tenantId: '000000',
+          isSuperAdmin: false,
+        },
+      },
+    },
+  })
   @ApiResponse({
     status: 403,
     description: 'Token de refresco inválido o expirado',
@@ -279,12 +324,14 @@ export class AuthController {
 
   // Endpoint de microservicio (no documentado por Swagger)
   @MessagePattern({ cmd: 'login' })
-  msLogin(@Payload() login: Login, @RealIP() ip: string) {
+  msLogin(@Payload() login: Login) {
+    const ip = (login as any)?.meta?.ip || (login as any)?.ip || '';
     return this.authService.login(login, ip);
   }
 
   @MessagePattern({ cmd: 'validateUser' })
-  async msValidateUser(@Payload() token: string) {
+  async msValidateUser(@Payload() payload: any) {
+    const token = payload?.token ?? payload;
     const user = await this.jwtTCPStrategy.validate(token);
     return {
       user,

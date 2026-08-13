@@ -32,11 +32,12 @@ export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
       map((result) => {
         // Si el resultado ya tiene el formato esperado (para compatibilidad mientras refactorizamos)
         if (result && result.status && result.statusCode) {
-          // Si es RPC, omitimos el statusCode del objeto que ya viene formateado
-          if (isRpc) {
-            const { statusCode: _, ...rest } = result;
-            return rest as Response<T>;
-          }
+        // Si es RPC, omitimos el statusCode del objeto que ya viene formateado
+        if (isRpc) {
+          const rest = { ...result };
+          delete rest.statusCode;
+          return rest as Response<T>;
+        }
           return result;
         }
 

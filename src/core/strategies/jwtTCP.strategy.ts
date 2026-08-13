@@ -3,6 +3,7 @@ import * as jwt from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from 'src/users/entities/user.entity';
+import { toPublicUser } from 'src/users/helpers/user.sanitizer';
 import { Model } from 'mongoose';
 import { UserPayload } from '../interfaces/user-payload.interface';
 
@@ -14,11 +15,7 @@ export class JwtTCPStrategy {
     private readonly configService: ConfigService,
     @InjectModel('User') private readonly userModel: Model<User>,
   ) {
-    const secret = this.configService.get<string>('JWT_SECRET');
-    if (!secret) {
-      throw new Error('JWT_SECRET no está definido en la configuración');
-    }
-    this.secret = secret;
+    this.secret = configService.getOrThrow<string>('JWT_SECRET');
   }
 
   async validate(token: string) {
@@ -35,7 +32,10 @@ export class JwtTCPStrategy {
       const payload = jwt.verify(token, this.secret) as UserPayload;
       const { _id } = payload;
       const user = await this.userModel.findById(_id).lean().exec();
-      return user;
+      if (!user) {
+        throw new UnauthorizedException('Usuario no encontrado');
+      }
+      return toPublicUser(user);
     } catch (err) {
       if (err instanceof jwt.TokenExpiredError) {
         throw new UnauthorizedException('SESSION_EXPIRED');
