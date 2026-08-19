@@ -136,14 +136,17 @@ Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo m
     };
   }
 
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.TCP,
-    options: {
-      host: configService.get<string>('MICROSERVICE_HOST', '127.0.0.1'),
-      port: configService.get<number>('MICROSERVICE_PORT', 3011),
-      ...(tlsEnabled && tlsOptions ? { tls: tlsOptions } : {}),
+  app.connectMicroservice<MicroserviceOptions>(
+    {
+      transport: Transport.TCP,
+      options: {
+        host: configService.get<string>('MICROSERVICE_HOST', '127.0.0.1'),
+        port: configService.get<number>('MICROSERVICE_PORT', 3011),
+        ...(tlsEnabled && tlsOptions ? { tls: tlsOptions } : {}),
+      },
     },
-  });
+    { inheritAppConfig: true },
+  );
 
   // Inicializa microservicio y servidor HTTP
   await app.startAllMicroservices();
