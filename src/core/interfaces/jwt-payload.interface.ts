@@ -8,4 +8,5 @@ export interface JwtPayload {
   company: string;
   tenantId: string;
   isSuperAdmin?: boolean;
+  sid?: string;
 }

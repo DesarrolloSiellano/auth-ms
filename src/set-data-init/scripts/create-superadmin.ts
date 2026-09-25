@@ -85,7 +85,7 @@ export async function main(): Promise<void> {
     password: passwordHash,
     phone: '',
     company: 'BPONET',
-    tenantId: String(company._id),
+    tenantId: String((company as any).id ?? company._id),
     isActived: true,
     isAdmin: true,
     isSuperAdmin: true,

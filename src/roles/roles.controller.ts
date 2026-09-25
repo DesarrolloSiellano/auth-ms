@@ -8,6 +8,8 @@ import {
   Put,
   UseGuards,
   Query,
+  Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
@@ -31,6 +33,13 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @UseGuards(AuthGuard('jwt'), ThrottlerHybridGuard)
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
+
+  /** La gestión de roles es exclusiva de SuperAdmin. */
+  private assertSuperAdmin(req: any): void {
+    if (!req?.user?.isSuperAdmin) {
+      throw new ForbiddenException('Solo un SuperAdmin puede gestionar roles');
+    }
+  }
 
   // Endpoints HTTP REST
   @Post()
@@ -56,7 +65,8 @@ export class RolesController {
     },
   })
   @ApiBody({ type: CreateRoleDto })
-  create(@Body() createRoleDto: CreateRoleDto) {
+  create(@Body() createRoleDto: CreateRoleDto, @Req() req: any) {
+    this.assertSuperAdmin(req);
     return this.rolesService.create(createRoleDto);
   }
 
@@ -157,7 +167,12 @@ export class RolesController {
     },
   })
   @ApiResponse({ status: 404, description: 'Rol no encontrado' })
-  update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateRoleDto: UpdateRoleDto,
+    @Req() req: any,
+  ) {
+    this.assertSuperAdmin(req);
     return this.rolesService.update(id, updateRoleDto);
   }
 
@@ -185,7 +200,8 @@ export class RolesController {
     },
   })
   @ApiResponse({ status: 404, description: 'Rol no encontrado' })
-  remove(@Param('id') id: string) {
+  remove(@Param('id') id: string, @Req() req: any) {
+    this.assertSuperAdmin(req);
     return this.rolesService.remove(id);
   }
 

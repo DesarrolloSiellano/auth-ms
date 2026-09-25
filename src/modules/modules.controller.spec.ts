@@ -1,11 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { ModulesController } from './modules.controller';
 import { ModulesService } from './modules.service';
 
 describe('ModulesController', () => {
   let controller: ModulesController;
+  const superAdminReq = { user: { isSuperAdmin: true } };
   const serviceMock = {
     create: jest.fn(),
     findAll: jest.fn(),
@@ -30,16 +31,16 @@ describe('ModulesController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('create exige admin y delega', () => {
+  it('create exige SuperAdmin y delega', () => {
     serviceMock.create.mockReturnValue('ok');
-    expect(controller.create({} as any, { user: { isAdmin: true } })).toBe('ok');
+    expect(controller.create({} as any, superAdminReq)).toBe('ok');
     expect(serviceMock.create).toHaveBeenCalledWith({});
   });
 
-  it('create rechaza no-admin', () => {
-    expect(() => controller.create({} as any, { user: { isAdmin: false } })).toThrow(
-      UnauthorizedException,
-    );
+  it('create rechaza a no-SuperAdmin', () => {
+    expect(() =>
+      controller.create({} as any, { user: { isAdmin: true, isSuperAdmin: false } }),
+    ).toThrow(ForbiddenException);
   });
 
   it('findAll exige admin y delega', () => {
@@ -63,14 +64,16 @@ describe('ModulesController', () => {
     expect(controller.findOne('m1')).toBe('one');
   });
 
-  it('update delega', () => {
+  it('update exige SuperAdmin y delega', () => {
     serviceMock.update.mockReturnValue('upd');
-    expect(controller.update('m1', { name: 'N' } as any)).toBe('upd');
+    expect(controller.update('m1', { name: 'N' } as any, superAdminReq)).toBe(
+      'upd',
+    );
   });
 
-  it('remove delega', () => {
+  it('remove exige SuperAdmin y delega', () => {
     serviceMock.remove.mockReturnValue('del');
-    expect(controller.remove('m1')).toBe('del');
+    expect(controller.remove('m1', superAdminReq)).toBe('del');
   });
 
   it('tcpPatternsDoc devuelve documentación', () => {

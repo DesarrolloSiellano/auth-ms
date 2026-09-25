@@ -7,6 +7,7 @@ import { MailService } from 'src/mail/mail.service';
 import { ConfigService } from '@nestjs/config';
 import { SessionsService } from 'src/sessions/sessions.service';
 import { getModelToken } from '@nestjs/mongoose';
+import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -36,15 +37,30 @@ describe('AuthService', () => {
     findById: jest.fn(),
     findByIdAndUpdate: jest.fn(),
     findOneAndUpdate: jest.fn(),
+    updateOne: jest.fn(() => ({
+      setOptions: jest
+        .fn()
+        .mockReturnValue({ exec: jest.fn().mockResolvedValue({}) }),
+    })),
   };
 
   const mockSessionsService = {
     createSession: jest.fn().mockResolvedValue({}),
     findActiveByRefreshHash: jest.fn(),
     deactivateByRefreshHash: jest.fn().mockResolvedValue(undefined),
+    touch: jest.fn().mockResolvedValue(undefined),
+    isSessionActive: jest.fn().mockResolvedValue(true),
   };
 
   const mailServiceMock = { sendEmail: jest.fn().mockResolvedValue(undefined) };
+
+  const tenantConfigServiceMock = {
+    isEmbedEnabled: jest.fn().mockReturnValue(false),
+    resolveConfig: jest.fn().mockResolvedValue({
+      data: { tenantId: '0000000', company: 'EmpresaX' },
+    }),
+    getPolicyValue: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -64,6 +80,10 @@ describe('AuthService', () => {
         { provide: getModelToken('User'), useValue: mockUserModel },
         { provide: SessionsService, useValue: mockSessionsService },
         { provide: MailService, useValue: mailServiceMock },
+        {
+          provide: TenantConfigService,
+          useValue: tenantConfigServiceMock,
+        },
         {
           provide: ConfigService,
           useValue: {
@@ -113,6 +133,7 @@ describe('AuthService', () => {
       company: 'EmpresaX',
       tenantId: '000000',
       isSuperAdmin: false,
+      sid: expect.any(String),
     });
     expect(accessPayload).not.toHaveProperty('modules');
     expect(accessPayload).not.toHaveProperty('roles');
@@ -120,6 +141,21 @@ describe('AuthService', () => {
     expect(accessPayload).not.toHaveProperty('password');
 
     expect(result.meta.payload).toEqual(accessPayload);
+  });
+
+  it('permite iniciar sesión con email o username (normalizado a minúsculas)', async () => {
+    mockUserModel.findOne.mockReturnValue({
+      lean: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(userMock),
+      }),
+    });
+    jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(true);
+
+    await service.login({ email: 'JuanP', password: 'x' }, '127.0.0.1');
+
+    expect(mockUserModel.findOne).toHaveBeenCalledWith({
+      $or: [{ email: 'juanp' }, { username: 'juanp' }],
+    });
   });
 
   describe('refreshAccessToken', () => {
@@ -148,6 +184,7 @@ describe('AuthService', () => {
         company: 'EmpresaX',
         tenantId: '000000',
         isSuperAdmin: false,
+        sid: 'sess1',
       });
       expect(verifySpy).toHaveBeenCalledWith('valid.token', {
         secret: 'secret',

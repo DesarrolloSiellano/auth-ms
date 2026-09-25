@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ForbiddenException } from '@nestjs/common';
 import { CompaniesController } from './companies.controller';
 import { CompaniesService } from './companies.service';
 
 describe('CompaniesController', () => {
   let controller: CompaniesController;
+  const superAdminReq = { user: { isSuperAdmin: true } };
   const serviceMock = {
     create: jest.fn(),
     findAll: jest.fn(),
@@ -30,39 +32,57 @@ describe('CompaniesController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('create delega', () => {
+  it('create delega (SuperAdmin)', () => {
     serviceMock.create.mockReturnValue('ok');
-    expect(controller.create({ name: 'X' } as any)).toBe('ok');
+    expect(controller.create({ name: 'X' } as any, superAdminReq)).toBe('ok');
   });
 
-  it('findAll delega', () => {
+  it('create rechaza a no-SuperAdmin', () => {
+    expect(() =>
+      controller.create({ name: 'X' } as any, {
+        user: { isSuperAdmin: false },
+      }),
+    ).toThrow(ForbiddenException);
+  });
+
+  it('findAll delega (SuperAdmin)', () => {
     serviceMock.findAll.mockReturnValue('list');
-    expect(controller.findAll()).toBe('list');
+    expect(controller.findAll(superAdminReq)).toBe('list');
+  });
+
+  it('findAll rechaza a no-SuperAdmin', () => {
+    expect(() =>
+      controller.findAll({ user: { isSuperAdmin: false } }),
+    ).toThrow(ForbiddenException);
   });
 
   it('findByPage delega con defaults', () => {
     serviceMock.findByPage.mockReturnValue('page');
-    expect(controller.findByPage(undefined, undefined, undefined)).toBe('page');
+    expect(
+      controller.findByPage(undefined, undefined, undefined, superAdminReq),
+    ).toBe('page');
   });
 
-  it('findByAutoComplete delega', () => {
+  it('findByAutoComplete delega (abierto a usuarios)', () => {
     serviceMock.findByAutoComplete.mockReturnValue('ac');
     expect(controller.findByAutoComplete('emp')).toBe('ac');
   });
 
   it('findOne delega', () => {
     serviceMock.findOne.mockReturnValue('one');
-    expect(controller.findOne('c1')).toBe('one');
+    expect(controller.findOne('c1', superAdminReq)).toBe('one');
   });
 
   it('update delega', () => {
     serviceMock.update.mockReturnValue('upd');
-    expect(controller.update('c1', { name: 'N' } as any)).toBe('upd');
+    expect(controller.update('c1', { name: 'N' } as any, superAdminReq)).toBe(
+      'upd',
+    );
   });
 
   it('remove delega', () => {
     serviceMock.remove.mockReturnValue('del');
-    expect(controller.remove('c1')).toBe('del');
+    expect(controller.remove('c1', superAdminReq)).toBe('del');
   });
 
   it('tcpPatternsDoc devuelve documentación', () => {

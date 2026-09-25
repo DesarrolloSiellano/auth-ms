@@ -8,6 +8,8 @@ import {
   Delete,
   Query,
   UseGuards,
+  Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
@@ -31,6 +33,15 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @UseGuards(AuthGuard('jwt'), ThrottlerHybridGuard)
 export class CompaniesController {
   constructor(private readonly companiesService: CompaniesService) {}
+
+  /** La gestión de compañías es exclusiva de SuperAdmin. */
+  private assertSuperAdmin(req: any): void {
+    if (!req?.user?.isSuperAdmin) {
+      throw new ForbiddenException(
+        'Solo un SuperAdmin puede gestionar compañías',
+      );
+    }
+  }
 
   // Métodos HTTP REST
 
@@ -57,7 +68,8 @@ export class CompaniesController {
       },
     },
   })
-  create(@Body() createCompanyDto: CreateCompanyDto) {
+  create(@Body() createCompanyDto: CreateCompanyDto, @Req() req: any) {
+    this.assertSuperAdmin(req);
     return this.companiesService.create(createCompanyDto);
   }
 
@@ -78,7 +90,8 @@ export class CompaniesController {
       },
     },
   })
-  findAll() {
+  findAll(@Req() req: any) {
+    this.assertSuperAdmin(req);
     return this.companiesService.findAll();
   }
 
@@ -103,7 +116,9 @@ export class CompaniesController {
     @Query('from') from?: number,
     @Query('limit') limit?: number,
     @Query('global') global?: string,
+    @Req() req?: any,
   ) {
+    this.assertSuperAdmin(req);
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limitNumber = limit !== undefined ? Number(limit) : 10;
     return this.companiesService.findByPage(fromNumber, limitNumber, global);
@@ -153,7 +168,8 @@ export class CompaniesController {
     description: 'Compañía no encontrada',
   })
   @UseGuards(ValidateObjectIdGuard)
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id') id: string, @Req() req: any) {
+    this.assertSuperAdmin(req);
     return this.companiesService.findOne(id);
   }
 
@@ -185,7 +201,12 @@ export class CompaniesController {
     description: 'Compañía no encontrada',
   })
   @UseGuards(ValidateObjectIdGuard)
-  update(@Param('id') id: string, @Body() updateCompanyDto: UpdateCompanyDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateCompanyDto: UpdateCompanyDto,
+    @Req() req: any,
+  ) {
+    this.assertSuperAdmin(req);
     return this.companiesService.update(id, updateCompanyDto);
   }
 
@@ -216,7 +237,8 @@ export class CompaniesController {
     description: 'Compañía no encontrada',
   })
   @UseGuards(ValidateObjectIdGuard)
-  remove(@Param('id') id: string) {
+  remove(@Param('id') id: string, @Req() req: any) {
+    this.assertSuperAdmin(req);
     return this.companiesService.remove(id);
   }
 
