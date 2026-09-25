@@ -102,6 +102,26 @@ ADMIN_EMAIL="admin@empresa.com" ADMIN_PASSWORD="clave-fuerte" npm run script:cre
 
 Variables opcionales: `ADMIN_NAME`, `ADMIN_LASTNAME`, `ADMIN_USERNAME` (por defecto `admin`, `admin`, `ADMIN_EMAIL`). El usuario se crea con `isNewUser: true` para forzar el cambio de contraseña en el primer inicio de sesión. Si el usuario ya existe, el script no hace nada.
 
+### Migración: unicidad global de `username` y `phone` opcional
+
+`email` y `username` son únicos globales; `username` y `phone` son opcionales. Antes de desplegar esta versión hay que normalizar `username` (minúsculas, sin vacíos, sin duplicados) y ajustar los índices. Ejecutar **una vez** (con backup previo):
+
+```bash
+# Con la app compilada (recomendado en producción)
+MONGO_URI="mongodb://..." \
+  node dist/set-data-init/scripts/normalize-user-unique-fields.js
+
+# En desarrollo (ts-node)
+npm run script:normalize-unique-fields
+```
+
+Qué hace: normaliza `username` a minúsculas, elimina valores vacíos o con espacios, resuelve duplicados (conserva el primero por `_id` y limpia el resto), elimina el índice `phone_1` (`phone` deja de ser único) y recrea `username_1` como `unique + sparse`. Es idempotente.
+
+Si no se ejecuta: la app **no se cae**, pero
+- `phone` puede seguir siendo único en la BD (si existía `phone_1`) y fallar al crear un segundo usuario sin teléfono;
+- `username_1` puede no crearse si hay duplicados/vacíos, dejando la unicidad solo a nivel de aplicación;
+- los `username` antiguos con mayúsculas no podrán iniciar sesión por usuario (el login compara en minúsculas); el login por correo sigue funcionando.
+
 ### Validación de entrada
 
 Se usa `ValidationPipe` global (`whitelist: true`, `transform: true`): los campos no declarados en los DTOs se eliminan automáticamente (anti mass-assignment). Requiere `class-validator`/`class-transformer` (ya instalados).

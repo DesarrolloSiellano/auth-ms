@@ -130,6 +130,18 @@ export class AuthController {
     return result;
   }
 
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cerrar sesión (revoca la sesión actual)',
+    description:
+      'Recibe opcionalmente { refreshToken } y desactiva la sesión asociada. ' +
+      'Acción opcional que ejecuta el usuario cuando decide cerrar sesión.',
+  })
+  logout(@Body() body: { refreshToken?: string }) {
+    return this.authService.logout(body?.refreshToken);
+  }
+
   @Post('recovery-password')
   @Throttle({ default: { limit: 3, ttl: 60000 } })
   @ApiOperation({ summary: 'Recuperar contraseña' })

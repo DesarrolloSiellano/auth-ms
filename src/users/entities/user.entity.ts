@@ -27,6 +27,17 @@ export interface User extends Document {
   isAdmin: boolean;
   isNewUser: boolean;
   isSuperAdmin: boolean;
+  mustChangePassword?: boolean;
+  isBlocked?: boolean;
+  blockReason?: string;
+  blockedUntil?: Date;
+  failedLoginAttempts?: number;
+  lastFailedLoginAt?: Date;
+  deletedAt?: Date;
+  tags?: string[];
+  groups?: string[];
+  customFields?: Record<string, any>;
+  invitedAt?: Date;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
   modules: Module[];
@@ -63,7 +74,14 @@ export const UserSchema = new Schema({
     unique: true,
   },
   phone: { type: String, required: false, trim: true },
-  //username: { type: String, unique: true, },
+  username: {
+    type: String,
+    required: false,
+    trim: true,
+    lowercase: true,
+    unique: true,
+    sparse: true,
+  },
   password: {
     type: String,
     required: [true, 'The password field is required'],
@@ -125,6 +143,17 @@ export const UserSchema = new Schema({
   isAdmin: { type: Boolean, default: false }, // Assuming Role is a separate entity
   isSuperAdmin: { type: Boolean, default: false }, // Assuming Role is a separate entity
   isNewUser: { type: Boolean, default: true },
+  mustChangePassword: { type: Boolean, default: false },
+  isBlocked: { type: Boolean, default: false },
+  blockReason: { type: String },
+  blockedUntil: { type: Date },
+  failedLoginAttempts: { type: Number, default: 0 },
+  lastFailedLoginAt: { type: Date },
+  deletedAt: { type: Date, default: null },
+  tags: [{ type: String }],
+  groups: [{ type: String }],
+  customFields: { type: Schema.Types.Mixed, default: {} },
+  invitedAt: { type: Date },
 
   passwordResetToken: { type: String, required: false },
   passwordResetExpires: { type: Date, required: false },
@@ -144,6 +173,9 @@ UserSchema.index({ company: 1, email: 1 }, { unique: true });
 UserSchema.index({ company: 1, name: 1, lastName: 1 });
 UserSchema.index({ company: 1, username: 1 });
 UserSchema.index({ company: 1, phone: 1 });
+UserSchema.index({ company: 1, deletedAt: 1 });
+UserSchema.index({ company: 1, tags: 1 });
+UserSchema.index({ company: 1, groups: 1 });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 addTenantIndexes(UserSchema, ['email']);
 

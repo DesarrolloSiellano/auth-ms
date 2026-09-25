@@ -5,10 +5,16 @@ describe('JwtStrategy', () => {
   let strategy: JwtStrategy;
   const configServiceMock = { getOrThrow: jest.fn().mockReturnValue('secret') };
   const mockUserModel = { findById: jest.fn() };
+  const sessionsServiceMock = { isSessionActive: jest.fn().mockResolvedValue(true) };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    strategy = new JwtStrategy(configServiceMock as any, mockUserModel as any);
+    sessionsServiceMock.isSessionActive.mockResolvedValue(true);
+    strategy = new JwtStrategy(
+      configServiceMock as any,
+      mockUserModel as any,
+      sessionsServiceMock as any,
+    );
   });
 
   it('retorna el usuario sanitizado si existe y está activo', async () => {
@@ -22,6 +28,26 @@ describe('JwtStrategy', () => {
     expect(mockUserModel.findById).toHaveBeenCalledWith('abc');
     expect(result).toMatchObject({ name: 'Juan', isActived: true });
     expect(result).not.toHaveProperty('password');
+  });
+
+  it('valida la sesión cuando el token trae sid', async () => {
+    const user = { _id: 'abc', isActived: true };
+    mockUserModel.findById.mockReturnValue({
+      lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(user) }),
+    });
+
+    await strategy.validate({ _id: 'abc', sid: 'sess-1' } as any);
+
+    expect(sessionsServiceMock.isSessionActive).toHaveBeenCalledWith('sess-1');
+  });
+
+  it('lanza 401 si la sesión fue revocada', async () => {
+    sessionsServiceMock.isSessionActive.mockResolvedValue(false);
+
+    await expect(
+      strategy.validate({ _id: 'abc', sid: 'sess-1' } as any),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(mockUserModel.findById).not.toHaveBeenCalled();
   });
 
   it('lanza 401 si el usuario no existe', async () => {

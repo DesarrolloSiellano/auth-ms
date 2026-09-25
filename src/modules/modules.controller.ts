@@ -9,6 +9,7 @@ import {
   UseGuards,
   Req,
   UnauthorizedException,
+  ForbiddenException,
   Query,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
@@ -37,6 +38,15 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 export class ModulesController {
   constructor(private readonly modulesService: ModulesService) {}
 
+  /** La gestión de módulos es exclusiva de SuperAdmin. */
+  private assertSuperAdmin(req: any): void {
+    if (!req?.user?.isSuperAdmin) {
+      throw new ForbiddenException(
+        'Solo un SuperAdmin puede gestionar módulos',
+      );
+    }
+  }
+
   @Post()
   @ApiOperation({ summary: 'Crear un módulo nuevo' })
   @ApiBody({ type: CreateModuleDto })
@@ -61,10 +71,7 @@ export class ModulesController {
     },
   })
   create(@Body() createModuleDto: CreateModuleDto, @Req() req: any) {
-    const user = req.user as UserPayload;
-    if (!user.isAdmin) {
-      throw new UnauthorizedException('User is not admin');
-    }
+    this.assertSuperAdmin(req);
     return this.modulesService.create(createModuleDto);
   }
 
@@ -175,7 +182,12 @@ export class ModulesController {
     description: 'Módulo no encontrado',
   })
   @UseGuards(ValidateObjectIdGuard)
-  update(@Param('id') id: string, @Body() updateModuleDto: UpdateModuleDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateModuleDto: UpdateModuleDto,
+    @Req() req: any,
+  ) {
+    this.assertSuperAdmin(req);
     return this.modulesService.update(id, updateModuleDto);
   }
 
@@ -206,7 +218,8 @@ export class ModulesController {
     description: 'Módulo no encontrado',
   })
   @UseGuards(ValidateObjectIdGuard)
-  remove(@Param('id') id: string) {
+  remove(@Param('id') id: string, @Req() req: any) {
+    this.assertSuperAdmin(req);
     return this.modulesService.remove(id);
   }
 

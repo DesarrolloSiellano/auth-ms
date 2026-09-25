@@ -8,6 +8,7 @@ export interface IdentityPayload {
   company: string;
   tenantId: string;
   isSuperAdmin?: boolean;
+  sid?: string;
 }
 
 /**
@@ -15,7 +16,7 @@ export interface IdentityPayload {
  * No incluye modules/roles/permissions (autorización) para mantener
  * el token por debajo de 1KB y evitar el error 431/414.
  */
-export function buildIdentityPayload(user: any): IdentityPayload {
+export function buildIdentityPayload(user: any, sid?: string): IdentityPayload {
   return {
     _id: user._id,
     name: user.name,
@@ -26,5 +27,6 @@ export function buildIdentityPayload(user: any): IdentityPayload {
     company: user.company,
     tenantId: user.tenantId,
     isSuperAdmin: user.isSuperAdmin,
+    ...(sid ? { sid } : {}),
   };
 }

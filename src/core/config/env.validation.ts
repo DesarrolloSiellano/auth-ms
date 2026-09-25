@@ -47,4 +47,13 @@ export const envValidationSchema = Joi.object({
   TLS_CERT_PATH: Joi.string().allow('').optional(),
   TLS_CA_PATH: Joi.string().allow('').optional(),
   TLS_MUTUAL: Joi.string().default('false'),
+
+  // Configuración de tenants: incluir tenantConfig en login/profile
+  TENANT_CONFIG_EMBED_IN_AUTH: Joi.string().default('true'),
+
+  // Reportes: tope de filas para exportación vía JSON (PDF en el frontend)
+  REPORTS_EXPORT_MAX_ROWS: Joi.number().default(5000),
+
+  // Retención de auditoría (días) para el índice TTL de audit_logs
+  AUDIT_RETENTION_DAYS: Joi.number().default(180),
 });

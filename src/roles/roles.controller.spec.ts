@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ForbiddenException } from '@nestjs/common';
 import { RolesController } from './roles.controller';
 import { RolesService } from './roles.service';
 
 describe('RolesController', () => {
   let controller: RolesController;
+  const superAdminReq = { user: { isSuperAdmin: true } };
   const serviceMock = {
     create: jest.fn(),
     findAll: jest.fn(),
@@ -29,9 +31,19 @@ describe('RolesController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('create delega', () => {
+  it('create exige SuperAdmin y delega', () => {
     serviceMock.create.mockReturnValue('ok');
-    expect(controller.create({ name: 'Admin' } as any)).toBe('ok');
+    expect(controller.create({ name: 'Admin' } as any, superAdminReq)).toBe(
+      'ok',
+    );
+  });
+
+  it('create rechaza a no-SuperAdmin', () => {
+    expect(() =>
+      controller.create({ name: 'Admin' } as any, {
+        user: { isAdmin: true, isSuperAdmin: false },
+      }),
+    ).toThrow(ForbiddenException);
   });
 
   it('findAll delega', () => {
@@ -49,14 +61,16 @@ describe('RolesController', () => {
     expect(controller.findOne('r1')).toBe('one');
   });
 
-  it('update delega', () => {
+  it('update exige SuperAdmin y delega', () => {
     serviceMock.update.mockReturnValue('upd');
-    expect(controller.update('r1', { name: 'N' } as any)).toBe('upd');
+    expect(controller.update('r1', { name: 'N' } as any, superAdminReq)).toBe(
+      'upd',
+    );
   });
 
-  it('remove delega', () => {
+  it('remove exige SuperAdmin y delega', () => {
     serviceMock.remove.mockReturnValue('del');
-    expect(controller.remove('r1')).toBe('del');
+    expect(controller.remove('r1', superAdminReq)).toBe('del');
   });
 
   it('tcpPatternsDoc devuelve documentación', () => {

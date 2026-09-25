@@ -8,6 +8,8 @@ import {
   Put,
   UseGuards,
   Query,
+  Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
@@ -31,6 +33,15 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @UseGuards(AuthGuard('jwt'), ThrottlerHybridGuard)
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
+
+  /** La gestión de permisos es exclusiva de SuperAdmin. */
+  private assertSuperAdmin(req: any): void {
+    if (!req?.user?.isSuperAdmin) {
+      throw new ForbiddenException(
+        'Solo un SuperAdmin puede gestionar permisos',
+      );
+    }
+  }
 
   // Métodos HTTP REST
 
@@ -57,7 +68,8 @@ export class PermissionsController {
       },
     },
   })
-  create(@Body() createPermissionDto: CreatePermissionDto) {
+  create(@Body() createPermissionDto: CreatePermissionDto, @Req() req: any) {
+    this.assertSuperAdmin(req);
     return this.permissionsService.create(createPermissionDto);
   }
 
@@ -167,7 +179,9 @@ export class PermissionsController {
   update(
     @Param('id') id: string,
     @Body() updatePermissionDto: UpdatePermissionDto,
+    @Req() req: any,
   ) {
+    this.assertSuperAdmin(req);
     return this.permissionsService.update(id, updatePermissionDto);
   }
 
@@ -198,7 +212,8 @@ export class PermissionsController {
     description: 'Permiso no encontrado',
   })
   @UseGuards(ValidateObjectIdGuard)
-  remove(@Param('id') id: string) {
+  remove(@Param('id') id: string, @Req() req: any) {
+    this.assertSuperAdmin(req);
     return this.permissionsService.remove(id);
   }
 

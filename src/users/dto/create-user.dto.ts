@@ -185,6 +185,38 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   redirectUri?: string;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'Si es true, envía una invitación por enlace (solo alta individual) en vez de contraseña temporal',
+  })
+  @IsOptional()
+  @IsBoolean()
+  invite?: boolean;
+
+  @ApiPropertyOptional({
+    example: ['tesoreria', 'turno-noche'],
+    description: 'Etiquetas del usuario',
+  })
+  @IsOptional()
+  @IsArray()
+  tags?: string[];
+
+  @ApiPropertyOptional({
+    example: ['operaciones'],
+    description: 'Grupos del usuario',
+  })
+  @IsOptional()
+  @IsArray()
+  groups?: string[];
+
+  @ApiPropertyOptional({
+    example: { centroCosto: 'CC-01' },
+    description: 'Campos personalizados de la empresa',
+  })
+  @IsOptional()
+  customFields?: Record<string, any>;
 }
 
 export class Rol {
