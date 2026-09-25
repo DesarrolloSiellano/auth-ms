@@ -15,6 +15,82 @@ import { ADMIN_MODULE } from './helpers/modules.admin';
 import { ADMIN_COMPANY } from './helpers/companies.admin';
 
 import { tenantLocalStorage } from 'src/core/database/tenant.context';
+import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+
+const deepClone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+
+const matchRoute = (a: any, b: any): boolean =>
+  (a?.path && a.path === b?.path) || (a?.name && a.name === b?.name);
+
+/** Fusiona los hijos del catálogo dentro de las rutas existentes (sin borrar). */
+function mergeChildren(existing: any[], catalog: any[]): {
+  children: any[];
+  changed: boolean;
+} {
+  let changed = false;
+  const children = [...(existing || [])];
+  for (const catChild of catalog || []) {
+    if (!children.some((c) => matchRoute(c, catChild))) {
+      children.push(deepClone(catChild));
+      changed = true;
+    }
+  }
+  return { children, changed };
+}
+
+/** Fusiona rutas del catálogo dentro de las existentes (preserva las propias). */
+function mergeRoutes(existing: any[], catalog: any[]): {
+  routes: any[];
+  changed: boolean;
+} {
+  let changed = false;
+  const routes = [...(existing || [])];
+  for (const catRoute of catalog || []) {
+    const match = routes.find((r) => matchRoute(r, catRoute));
+    if (!match) {
+      routes.push(deepClone(catRoute));
+      changed = true;
+      continue;
+    }
+    const { children, changed: childChanged } = mergeChildren(
+      match.children || [],
+      catRoute.children || [],
+    );
+    if (childChanged) {
+      match.children = children;
+      changed = true;
+    }
+  }
+  return { routes, changed };
+}
+
+/** Fusiona módulos del catálogo dentro de los módulos del usuario. */
+function mergeModuleCatalog(existing: any[], catalog: any[]): {
+  modules: any[];
+  changed: boolean;
+} {
+  let changed = false;
+  const modules = (existing || []).map((m) => deepClone(m));
+  for (const catModule of catalog || []) {
+    const target = modules.find(
+      (m) => m.name === catModule.name || String(m._id) === String(catModule._id),
+    );
+    if (!target) {
+      modules.push(deepClone(catModule));
+      changed = true;
+      continue;
+    }
+    const { routes, changed: routesChanged } = mergeRoutes(
+      target.routes || target.router || [],
+      catModule.routes || [],
+    );
+    if (routesChanged) {
+      target.routes = routes;
+      changed = true;
+    }
+  }
+  return { modules, changed };
+}
 
 @Injectable()
 export class SetDataInit implements OnApplicationBootstrap {
@@ -27,6 +103,7 @@ export class SetDataInit implements OnApplicationBootstrap {
     @InjectModel('User') private readonly userModel: Model<User>,
     @InjectModel('Module') private readonly moduleModel: Model<Module>,
     @InjectModel('Company') private readonly companyModel: Model<Company>,
+    private readonly tenantConfigService: TenantConfigService,
   ) {}
 
   async createInitModules() {
@@ -38,9 +115,25 @@ export class SetDataInit implements OnApplicationBootstrap {
           .exec();
 
         if (moduleExists) {
-          this.logger.warn(
-            `Module ${moduleItem.name} already exists, skipping.`,
+          // Mantiene sincronizadas las rutas del catálogo en módulos existentes
+          // (p. ej. nuevas opciones de menú) sin borrar rutas propias.
+          const { routes, changed } = mergeRoutes(
+            (moduleExists as any).routes || [],
+            moduleItem.routes || [],
           );
+          if (changed) {
+            await this.moduleModel.updateOne(
+              { _id: moduleExists._id },
+              { $set: { routes } },
+            );
+            this.logger.log(
+              `Module ${moduleItem.name}: rutas actualizadas (nuevas opciones).`,
+            );
+          } else {
+            this.logger.warn(
+              `Module ${moduleItem.name} already exists, skipping.`,
+            );
+          }
           continue;
         }
         await this.moduleModel.create(moduleItem);
@@ -246,6 +339,51 @@ export class SetDataInit implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Sincroniza las rutas del catálogo dentro de los módulos embebidos de los
+   * usuarios admin por defecto, para que nuevas opciones de menú (p. ej.
+   * /tenant-config) aparezcan sin tener que recrear el usuario.
+   */
+  async syncAdminUserModules() {
+    try {
+      const catalogModules = await this.moduleModel.find().lean().exec();
+      if (!catalogModules || catalogModules.length === 0) return;
+
+      for (const adminUser of ADMIN_USER) {
+        const existingAdmin = await this.userModel
+          .findOne({
+            $or: [
+              ...(adminUser.email ? [{ email: adminUser.email }] : []),
+              ...(adminUser.username
+                ? [{ username: adminUser.username }]
+                : []),
+            ],
+          })
+          .lean()
+          .exec();
+        if (!existingAdmin) continue;
+
+        const { modules, changed } = mergeModuleCatalog(
+          (existingAdmin as any).modules || [],
+          catalogModules as any[],
+        );
+        if (changed) {
+          await this.userModel.updateOne(
+            { _id: (existingAdmin as any)._id },
+            { $set: { modules } },
+          );
+          this.logger.log(
+            `Rutas de módulos sincronizadas para ${
+              adminUser.email || adminUser.username
+            }.`,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error('Error syncing admin user modules', error);
+    }
+  }
+
   async onApplicationBootstrap() {
     await this.validateIfDataExists();
   }
@@ -292,6 +430,16 @@ export class SetDataInit implements OnApplicationBootstrap {
       }
 
       /**
+       * Catálogo de políticas + configuración por defecto del tenant
+       */
+      this.logger.log('Validating tenant policies catalog...');
+      await this.tenantConfigService.seedDefaultCatalog();
+      await this.tenantConfigService.ensureConfig(
+        String(bponetCompany.id),
+        String(bponetCompany.name),
+      );
+
+      /**
        * Crear admins si no existen
        */
       if (process.env.NODE_ENV === 'production') {
@@ -303,6 +451,11 @@ export class SetDataInit implements OnApplicationBootstrap {
       } else {
         await this.createAdminUsers();
       }
+
+      /**
+       * Sincronizar rutas nuevas (p. ej. /tenant-config) en admins existentes
+       */
+      await this.syncAdminUserModules();
 
       this.logger.log('Initial data validation completed successfully.');
     } catch (error) {

@@ -17,6 +17,7 @@ export interface Session extends Document {
   modified: string;
   isActive: boolean;
   refreshToken?: string;
+  lastActivityAt?: Date;
   ip?: string;
   os?: string;
   os_version?: string;
@@ -44,6 +45,7 @@ export const SessionSchema = new Schema({
   modified: { type: String, default: moment().format('YYYY-MM-DD HH:mm:ss') },
   isActive: { type: Boolean, default: true },
   refreshToken: { type: String },
+  lastActivityAt: { type: Date, default: Date.now },
   ip: { type: String },
   os: { type: String },
   os_version: { type: String },
@@ -67,5 +69,8 @@ SessionSchema.index({ company: 1, user: 1 });
 SessionSchema.index({ company: 1, refreshToken: 1 });
 SessionSchema.index({ refreshToken: 1, isActive: 1 });
 addTenantIndexes(SessionSchema, ['refreshToken']);
+
+// Purga automática: las sesiones sin actividad en 90 días se eliminan.
+SessionSchema.index({ lastActivityAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 90 });
 
 export const SessionModel = model<Session>('sessions', SessionSchema);

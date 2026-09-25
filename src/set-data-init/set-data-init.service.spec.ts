@@ -1,6 +1,7 @@
 import { SetDataInit } from './set-data-init.service';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
+import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 
 describe('SetDataInit', () => {
   let service: SetDataInit;
@@ -25,11 +26,13 @@ describe('SetDataInit', () => {
   }));
   mockUserModel.findOne = jest.fn();
   mockUserModel.create = jest.fn();
+  mockUserModel.updateOne = jest.fn().mockResolvedValue({});
 
   const mockModuleModel: any = {
     findOne: jest.fn(),
     find: jest.fn(),
     create: jest.fn().mockResolvedValue({}),
+    updateOne: jest.fn().mockResolvedValue({}),
   };
 
   const mockCompanyModel: any = {
@@ -68,6 +71,13 @@ describe('SetDataInit', () => {
         { provide: getModelToken('User'), useValue: mockUserModel },
         { provide: getModelToken('Module'), useValue: mockModuleModel },
         { provide: getModelToken('Company'), useValue: mockCompanyModel },
+        {
+          provide: TenantConfigService,
+          useValue: {
+            seedDefaultCatalog: jest.fn().mockResolvedValue(0),
+            ensureConfig: jest.fn().mockResolvedValue(true),
+          },
+        },
       ],
     }).compile();
 
@@ -89,9 +99,66 @@ describe('SetDataInit', () => {
       expect(mockModuleModel.create).not.toHaveBeenCalled();
     });
 
+    it('agrega rutas nuevas al módulo existente (p. ej. dashboard)', async () => {
+      mockModuleModel.findOne.mockReturnValue(
+        leanResolve({
+          _id: 'm1',
+          routes: [{ name: 'Users', path: '/pages/users', isActive: true }],
+        }),
+      );
+
+      await service.createInitModules();
+
+      expect(mockModuleModel.updateOne).toHaveBeenCalled();
+      const updateArg = mockModuleModel.updateOne.mock.calls[0][1];
+      const paths = updateArg.$set.routes.map((r: any) => r.path);
+      expect(paths).toContain('/pages/dashboard');
+    });
+
     it('lanza el error si algo falla', async () => {
       mockModuleModel.create.mockRejectedValueOnce(new Error('boom'));
       await expect(service.createInitModules()).rejects.toThrow('boom');
+    });
+  });
+
+  describe('syncAdminUserModules', () => {
+    it('agrega la ruta dashboard al admin existente', async () => {
+      mockModuleModel.find.mockReturnValue(
+        leanResolve([
+          {
+            _id: 'm1',
+            name: 'adminUserModule',
+            routes: [
+              { name: 'Users', path: '/pages/users', isActive: true },
+              {
+                name: 'Dashboard',
+                path: '/pages/dashboard',
+                isActive: true,
+              },
+            ],
+          },
+        ]),
+      );
+      mockUserModel.findOne.mockReturnValue(
+        leanResolve({
+          _id: 'u1',
+          email: 'admin@admin.com',
+          modules: [
+            {
+              _id: 'm1',
+              name: 'adminUserModule',
+              routes: [{ name: 'Users', path: '/pages/users', isActive: true }],
+            },
+          ],
+        }),
+      );
+
+      await service.syncAdminUserModules();
+
+      expect(mockUserModel.updateOne).toHaveBeenCalled();
+      const updateArg = mockUserModel.updateOne.mock.calls[0][1];
+      const paths = updateArg.$set.modules[0].routes.map((r: any) => r.path);
+      expect(paths).toContain('/pages/dashboard');
     });
   });
 

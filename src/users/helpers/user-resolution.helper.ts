@@ -125,6 +125,67 @@ export async function resolveUserPermissions(
   return userPermissions;
 }
 
+/**
+ * Devuelve el primer valor booleano definido (ignora null/undefined).
+ * Si ninguno está definido, usa `defaultValue`.
+ */
+function resolveActive(
+  candidates: any[],
+  defaultValue = true,
+): boolean {
+  for (const value of candidates) {
+    if (value === true) return true;
+    if (value === false) return false;
+  }
+  return defaultValue;
+}
+
+function matchRoute(a: any, b: any): boolean {
+  if (!a || !b) return false;
+  return (
+    (a.path !== undefined && a.path === b.path) ||
+    (a.name !== undefined && a.name === b.name)
+  );
+}
+
+/**
+ * Resuelve los hijos de una ruta. Si el payload define hijos, ese es el
+ * conjunto deseado (se respeta su `isActive`); si no, se usan los del catálogo.
+ */
+function resolveChildren(globalChildren: any[], payloadChildren?: any[]): any[] {
+  const global = globalChildren || [];
+
+  if (Array.isArray(payloadChildren)) {
+    return payloadChildren.map((payloadChild) => {
+      const globalChild = global.find((gc: any) => matchRoute(payloadChild, gc));
+      const base = globalChild || payloadChild;
+      return {
+        ...base,
+        isActive: resolveActive(
+          [payloadChild?.isActive, globalChild?.isActive],
+          true,
+        ),
+      };
+    });
+  }
+
+  return global.map((globalChild) => ({
+    ...globalChild,
+    isActive: resolveActive([globalChild?.isActive], true),
+  }));
+}
+
+/**
+ * El padre es contenedor: si tiene hijos, su estado se deriva de ellos;
+ * si no, se usa el primer valor definido del payload/catálogo.
+ */
+function deriveParentActive(children: any[], fallbacks: any[]): boolean {
+  if (children.length > 0) {
+    return children.some((c: any) => c.isActive === true);
+  }
+  return resolveActive(fallbacks, true);
+}
+
 export async function resolveUserModules(
   payload: any,
   moduleModel: Model<any>,
@@ -144,30 +205,29 @@ export async function resolveUserModules(
 
       if (globalModule) {
         const allowedPaths = payload.allowedRoutes;
-        const filteredRoutes = globalModule.routes
+        const filteredRoutes = (globalModule.routes || [])
           .map((globalRoute: any) => {
-            const isParentAllowed = allowedPaths.includes(globalRoute.path);
+            const isParentAllowed =
+              allowedPaths.includes(globalRoute.path) ||
+              allowedPaths.includes(globalRoute.name);
 
-            let filteredChildren = [];
-            if (globalRoute.children && Array.isArray(globalRoute.children)) {
-              filteredChildren = globalRoute.children
-                .filter(
-                  (child: any) =>
-                    allowedPaths.includes(child.path) || isParentAllowed,
-                )
-                .map((child: any) => ({
-                  ...child,
-                  isActive: true,
-                }));
-            }
+            const children = (globalRoute.children || []).map((child: any) => ({
+              ...child,
+              isActive:
+                isParentAllowed ||
+                allowedPaths.includes(child.path) ||
+                allowedPaths.includes(child.name),
+            }));
 
-            const isAnyChildAllowed = filteredChildren.length > 0;
+            const isAnyChildAllowed = children.some(
+              (c: any) => c.isActive === true,
+            );
 
             if (isParentAllowed || isAnyChildAllowed) {
               return {
                 ...globalRoute,
-                isActive: true,
-                children: filteredChildren,
+                isActive: deriveParentActive(children, [isParentAllowed]),
+                children,
               };
             }
             return null;
@@ -191,38 +251,28 @@ export async function resolveUserModules(
 
         if (globalModule) {
           if (modPayload.routes && Array.isArray(modPayload.routes)) {
-            const filteredRoutes = globalModule.routes
-              .map((globalRoute: any) => {
-                const payloadRoute = modPayload.routes.find(
-                  (r: any) => r.path === globalRoute.path,
-                );
-                if (!payloadRoute) return null;
+            const globalRoutes: any[] = globalModule.routes || [];
+            const payloadRoutes: any[] = modPayload.routes;
 
-                let filteredChildren = [];
-                if (
-                  globalRoute.children &&
-                  Array.isArray(globalRoute.children) &&
-                  payloadRoute.children &&
-                  Array.isArray(payloadRoute.children)
-                ) {
-                  filteredChildren = globalRoute.children.filter(
-                    (globalChild: any) =>
-                      payloadRoute.children.some(
-                        (c: any) => c.path === globalChild.path,
-                      ),
-                  );
-                }
-
-                return {
-                  ...globalRoute,
-                  isActive:
-                    payloadRoute.isActive !== undefined
-                      ? payloadRoute.isActive
-                      : globalRoute.isActive,
-                  children: filteredChildren,
-                };
-              })
-              .filter((r: any) => r !== null);
+            // El payload define el conjunto deseado de rutas del usuario.
+            const filteredRoutes = payloadRoutes.map((payloadRoute: any) => {
+              const globalRoute = globalRoutes.find((globalRoute: any) =>
+                matchRoute(payloadRoute, globalRoute),
+              );
+              const base = globalRoute || payloadRoute;
+              const children = resolveChildren(
+                base.children || [],
+                payloadRoute.children,
+              );
+              return {
+                ...base,
+                isActive: deriveParentActive(children, [
+                  payloadRoute.isActive,
+                  globalRoute?.isActive,
+                ]),
+                children,
+              };
+            });
 
             userModules.push({
               ...globalModule,

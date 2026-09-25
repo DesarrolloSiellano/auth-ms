@@ -8,6 +8,9 @@ import { UserSchema } from 'src/users/entities/user.entity';
 import { ModuleSchema } from 'src/modules/entities/module.entity';
 import { CompanySchema } from 'src/companies/entities/company.entity';
 import { SessionSchema } from 'src/sessions/entities/session.entity';
+import { AuditLogSchema } from 'src/audit/entities/audit-log.entity';
+import { SavedFilterSchema } from 'src/users/entities/saved-filter.entity';
+import { CustomFieldDefinitionSchema } from 'src/users/entities/custom-field-definition.entity';
 
 @Global()
 @Module({
@@ -25,6 +28,9 @@ import { SessionSchema } from 'src/sessions/entities/session.entity';
       { name: 'Module', schema: ModuleSchema },
       { name: 'Company', schema: CompanySchema },
       { name: 'Session', schema: SessionSchema },
+      { name: 'AuditLog', schema: AuditLogSchema },
+      { name: 'SavedFilter', schema: SavedFilterSchema },
+      { name: 'CustomFieldDefinition', schema: CustomFieldDefinitionSchema },
     ]),
   ],
   exports: [MongooseModule],

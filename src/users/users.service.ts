@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+  Optional,
+} from '@nestjs/common';
+import { UserAdminService } from './user-admin.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
@@ -6,12 +13,15 @@ import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { MailService } from 'src/mail/mail.service';
 import * as generatePassword from 'generate-password';
+import * as crypto from 'crypto';
 import {
   resolveUserRoles,
   resolveUserPermissions,
   resolveUserModules,
 } from './helpers/user-resolution.helper';
 import { toPublicUser } from './helpers/user.sanitizer';
+import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+import { tenantLocalStorage } from 'src/core/database/tenant.context';
 
 @Injectable()
 export class UsersService {
@@ -23,9 +33,19 @@ export class UsersService {
     @InjectModel('Permission') private readonly permissionModel: Model<any>,
     @InjectModel('Module') private readonly moduleModel: Model<any>,
     private readonly mailService: MailService,
+    private readonly tenantConfigService: TenantConfigService,
+    @Optional() private readonly userAdminService?: UserAdminService,
   ) {}
 
   async create(createUserDto: CreateUserDto) {
+    const email = this.normalizeEmail(createUserDto.email);
+    const username = this.normalizeUsername(createUserDto.username);
+
+    await this.ensureUserLimit(createUserDto);
+    await this.ensureUniqueIdentity(email, username);
+
+    const isInvite = createUserDto.invite === true;
+
     // Generar contraseña temporal segura
     const tempPassword = generatePassword.generate({
       length: 12,
@@ -35,33 +55,85 @@ export class UsersService {
       strict: true,
     });
 
-    const userData = {
+    const userData: any = {
       ...createUserDto,
       _id: createUserDto._id, // Si viene de otra app, lo usamos; si no, será undefined y Mongo lo generará
       password: tempPassword,
+      mustChangePassword: true,
     };
+    delete userData.invite;
+
+    if (createUserDto.customFields !== undefined) {
+      const store = tenantLocalStorage.getStore();
+      const company = createUserDto.company || store?.companyId;
+      const tenant = (createUserDto as any).tenantId || store?.tenantId;
+      userData.customFields = this.userAdminService
+        ? await this.userAdminService.validateCustomFields(
+            company,
+            tenant,
+            createUserDto.customFields,
+          )
+        : createUserDto.customFields;
+    }
+
+    let inviteToken = '';
+    if (isInvite) {
+      const token = this.generateResetToken();
+      userData.passwordResetToken = token.hash;
+      userData.passwordResetExpires = token.expires;
+      userData.invitedAt = new Date();
+      inviteToken = token.raw;
+    }
+
+    if (email) userData.email = email;
+    if (username) userData.username = username;
+    else delete userData.username;
 
     const newUser = new this.userModel(userData);
     const result = await newUser.save();
 
-    this.mailService
-      .sendEmail({
-        to: result.email,
-        subject: 'Bienvenido a BpoNet - Activa tu cuenta',
-        template: 'welcome',
-        context: {
-          name: result.name,
-          platform_name: 'BpoNet',
-          username: result.email,
-          password: tempPassword,
-          login_url: userData.redirectUri
-            ? userData.redirectUri
-            : 'https://app.bponet.com.co',
-        },
-      })
-      .catch((error: any) => {
-        this.logger.error('Error sending email: ' + error?.message, error?.stack);
-      });
+    if (isInvite) {
+      const inviteUrl = `${this.frontUrl(userData.redirectUri)}/set-password?token=${inviteToken}`;
+      this.mailService
+        .sendEmail({
+          to: result.email,
+          subject: 'Invitación a BpoNet',
+          template: 'invite',
+          context: {
+            name: result.name,
+            platform_name: 'BpoNet',
+            invite_url: inviteUrl,
+          },
+        })
+        .catch((error: any) => {
+          this.logger.error(
+            'Error sending invite email: ' + error?.message,
+            error?.stack,
+          );
+        });
+    } else {
+      this.mailService
+        .sendEmail({
+          to: result.email,
+          subject: 'Bienvenido a BpoNet - Activa tu cuenta',
+          template: 'welcome',
+          context: {
+            name: result.name,
+            platform_name: 'BpoNet',
+            username: result.email,
+            password: tempPassword,
+            login_url: userData.redirectUri
+              ? userData.redirectUri
+              : 'https://app.bponet.com.co',
+          },
+        })
+        .catch((error: any) => {
+          this.logger.error(
+            'Error sending email: ' + error?.message,
+            error?.stack,
+          );
+        });
+    }
 
     return {
       data: toPublicUser(result.toObject()),
@@ -93,9 +165,9 @@ export class UsersService {
       tenantId: payload.tenantId || payload.company || 'default_tenant',
       name: payload.name,
       lastName: payload.lastName,
-      email: payload.email,
+      email: this.normalizeEmail(payload.email),
       phone: payload.phone,
-      username: payload.username || payload.email,
+      username: this.normalizeUsername(payload.username || payload.email),
       password: tempPassword,
       company: payload.company || 'default_company',
       redirectUri: payload.redirectUri || null,
@@ -145,7 +217,7 @@ export class UsersService {
   }
 
   async findAll(user?: any) {
-    const query: any = {};
+    const query: any = { deletedAt: null };
     if (user && !user.isSuperAdmin) {
       query.company = user.company;
     }
@@ -158,7 +230,7 @@ export class UsersService {
   }
 
   async findActiveByTenant(user?: any, onlyAgents?: unknown) {
-    const query: any = { isActived: true };
+    const query: any = { isActived: true, deletedAt: null };
 
     if (user && !user.isSuperAdmin) {
       const tenantId = user.tenantId || user.company;
@@ -195,35 +267,105 @@ export class UsersService {
     };
   }
 
-  async findByPage(user?: any, from?: number, limit?: number, global?: any) {
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private parseFilters(filters?: any): Record<string, any> {
+    if (!filters) return {};
+    if (typeof filters === 'string') {
+      try {
+        const parsed = JSON.parse(filters);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+    return typeof filters === 'object' ? filters : {};
+  }
+
+  /**
+   * Listado paginado. Acepta búsqueda global y filtros avanzados combinados
+   * (estado, rol, bloqueo, email, usuario, teléfono, etiquetas, grupos,
+   * rango de fechas y empresa) reutilizados por la búsqueda avanzada.
+   */
+  async findByPage(
+    user?: any,
+    from?: number,
+    limit?: number,
+    global?: any,
+    filters?: any,
+  ) {
     const { isSuperAdmin } = user;
-    const query: any = {};
+    const f = this.parseFilters(filters);
+    const query: any = { deletedAt: null };
+    const and: any[] = [];
 
     if (!isSuperAdmin) {
       query.company = user.company;
+    } else if (f.company) {
+      query.company = new RegExp(this.escapeRegExp(String(f.company)), 'i');
     }
 
-    if (global) {
-      const regex = new RegExp(global, 'i');
-      if (isSuperAdmin) {
-        query.$or = [
-          { name: regex },
-          { lastName: regex },
-          { username: regex },
-          { email: regex },
-          { phone: regex },
-          { company: regex },
-        ];
-      } else {
-        query.$or = [
-          { name: regex },
-          { lastName: regex },
-          { username: regex },
-          { email: regex },
-          { phone: regex },
-        ];
-      }
+    if (f.estado !== undefined && f.estado !== '' && f.estado !== null) {
+      query.isActived = String(f.estado) === 'true';
     }
+    if (String(f.isBlocked).toLowerCase() === 'true') {
+      query.isBlocked = true;
+    } else if (String(f.isBlocked).toLowerCase() === 'false') {
+      query.isBlocked = false;
+    }
+    if (f.rol) {
+      const rx = new RegExp(this.escapeRegExp(String(f.rol)), 'i');
+      and.push({ $or: [{ 'roles.codeRol': rx }, { 'roles.name': rx }] });
+    }
+    if (f.email) {
+      query.email = new RegExp(this.escapeRegExp(String(f.email)), 'i');
+    }
+    if (f.username) {
+      query.username = new RegExp(this.escapeRegExp(String(f.username)), 'i');
+    }
+    if (f.phone) {
+      query.phone = new RegExp(this.escapeRegExp(String(f.phone)), 'i');
+    }
+    if (f.tags) {
+      const list = String(f.tags)
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      if (list.length) query.tags = { $in: list };
+    }
+    if (f.groups) {
+      const list = String(f.groups)
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      if (list.length) query.groups = { $in: list };
+    }
+    if (f.desde || f.hasta) {
+      const range: any = {};
+      if (f.desde) range.$gte = new Date(f.desde);
+      if (f.hasta) range.$lte = new Date(`${f.hasta}T23:59:59.999Z`);
+      query.created = range;
+    }
+
+    const search = f.global || global;
+    if (search) {
+      const regex = new RegExp(this.escapeRegExp(String(search)), 'i');
+      and.push({
+        $or: [
+          { name: regex },
+          { lastName: regex },
+          { username: regex },
+          { email: regex },
+          { phone: regex },
+          ...(isSuperAdmin ? [{ company: regex }] : []),
+        ],
+      });
+    }
+
+    if (and.length) query.$and = and;
+
     const skipNumber = from && from >= 0 ? from : 0;
     const limitNumber = limit && limit > 0 ? limit : 100;
 
@@ -247,7 +389,7 @@ export class UsersService {
 
   // Paginación simple: ?page=1&limit=10 (puedes mejorarla con DTO o query params en el controller)
   async findByPagination(user?: any, page = 1, limit = 10) {
-    const query: any = {};
+    const query: any = { deletedAt: null };
     if (user && !user.isSuperAdmin) {
       query.company = user.company;
     }
@@ -268,9 +410,12 @@ export class UsersService {
     };
   }
 
-  // Búsqueda simple por ID
+  // Búsqueda simple por ID (respetando el filtro de tenant del plugin)
   async findOne(id: string) {
-    const user = await this.userModel.findById(id).lean().exec();
+    const user = await this.userModel
+      .findOne({ _id: id })
+      .lean()
+      .exec();
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
@@ -295,6 +440,7 @@ export class UsersService {
 
     // Busca por rango de fechas en createdAt
     const query: any = {
+      deletedAt: null,
       createdAt: {
         $gte: start,
         $lte: end,
@@ -323,8 +469,51 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
+    const hasEmail = updateUserDto.email !== undefined;
+    const hasUsername = updateUserDto.username !== undefined;
+    const email = hasEmail ? this.normalizeEmail(updateUserDto.email) : undefined;
+    const username = hasUsername
+      ? this.normalizeUsername(updateUserDto.username)
+      : undefined;
+
+    await this.ensureUniqueIdentity(
+      email || undefined,
+      username || undefined,
+      id,
+    );
+
+    const setFields: any = { ...updateUserDto };
+    delete setFields.email;
+    delete setFields.username;
+    if (hasEmail && email) setFields.email = email;
+
+    if (updateUserDto.customFields !== undefined) {
+      const existing = await this.userModel
+        .findById(id)
+        .select('company tenantId')
+        .lean()
+        .exec();
+      const company = updateUserDto.company || existing?.company;
+      setFields.customFields = this.userAdminService
+        ? await this.userAdminService.validateCustomFields(
+            company,
+            existing?.tenantId,
+            updateUserDto.customFields,
+          )
+        : updateUserDto.customFields;
+    }
+
+    const updateOperation: any = { $set: setFields };
+    if (hasUsername) {
+      if (username) {
+        updateOperation.$set.username = username;
+      } else {
+        updateOperation.$unset = { username: '' };
+      }
+    }
+
     const updatedUser = await this.userModel
-      .findByIdAndUpdate(id, updateUserDto, { new: true })
+      .findByIdAndUpdate(id, updateOperation, { new: true })
       .lean()
       .exec();
 
@@ -332,6 +521,125 @@ export class UsersService {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
     return toPublicUser(updatedUser);
+  }
+
+  async checkAvailability(params: {
+    email?: string;
+    username?: string;
+    excludeId?: string;
+  }) {
+    const email = params.email ? this.normalizeEmail(params.email) : undefined;
+    const username = params.username
+      ? this.normalizeUsername(params.username)
+      : undefined;
+    const base: any = params.excludeId ? { _id: { $ne: params.excludeId } } : {};
+
+    const [emailDoc, usernameDoc] = await Promise.all([
+      email
+        ? this.userModel
+            .findOne({ ...base, email })
+            .setOptions({ bypassTenant: true })
+            .lean()
+            .exec()
+        : Promise.resolve(null),
+      username
+        ? this.userModel
+            .findOne({ ...base, username })
+            .setOptions({ bypassTenant: true })
+            .lean()
+            .exec()
+        : Promise.resolve(null),
+    ]);
+
+    return {
+      message: 'User availability checked successfully',
+      data: {
+        emailExists: !!emailDoc,
+        usernameExists: !!usernameDoc,
+      },
+      meta: { totalData: 1 },
+    };
+  }
+
+  private normalizeEmail(email?: string): string {
+    return (email ?? '').trim().toLowerCase();
+  }
+
+  private normalizeUsername(username?: string): string {
+    return (username ?? '').trim().toLowerCase();
+  }
+
+  private generateResetToken(): { raw: string; hash: string; expires: Date } {
+    const raw = crypto.randomBytes(32).toString('hex');
+    return {
+      raw,
+      hash: crypto.createHash('sha256').update(raw).digest('hex'),
+      expires: new Date(Date.now() + 48 * 60 * 60 * 1000),
+    };
+  }
+
+  private frontUrl(redirectUri?: string): string {
+    return redirectUri || process.env.APP_URL || 'https://app.bponet.com.co';
+  }
+
+  /**
+   * Valida el límite de usuarios de la empresa (`limits.maxUsers`).
+   * 0 = sin límite. La empresa/tenant se toma del DTO o del contexto.
+   */
+  private async ensureUserLimit(dto: any): Promise<void> {
+    const store = tenantLocalStorage.getStore();
+    const company = dto?.company || store?.companyId;
+    const tenantId = dto?.tenantId || store?.tenantId || company;
+    if (!company) return;
+
+    const raw = await this.tenantConfigService.getPolicyValue(
+      tenantId,
+      company,
+      'limits.maxUsers',
+    );
+    const limit = Number(raw) || 0;
+    if (limit <= 0) return;
+
+    const count = await this.userModel
+      .countDocuments({ company })
+      .setOptions({ bypassTenant: true })
+      .exec();
+
+    if (count >= limit) {
+      throw new ConflictException(
+        `Se alcanzó el máximo de usuarios permitido para la empresa (${limit})`,
+      );
+    }
+  }
+
+  private async ensureUniqueIdentity(
+    email?: string,
+    username?: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const base: any = excludeId ? { _id: { $ne: excludeId } } : {};
+
+    if (email) {
+      const existingEmail = await this.userModel
+        .findOne({ ...base, email })
+        .setOptions({ bypassTenant: true })
+        .lean()
+        .exec();
+      if (existingEmail) {
+        throw new ConflictException('El correo electrónico ya está registrado');
+      }
+    }
+
+    if (username) {
+      const existingUsername = await this.userModel
+        .findOne({ ...base, username })
+        .setOptions({ bypassTenant: true })
+        .lean()
+        .exec();
+      if (existingUsername) {
+        throw new ConflictException('El nombre de usuario ya está registrado');
+      }
+    }
   }
 
   async remove(id: string) {
@@ -348,6 +656,8 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    const tenantConfig = await this.resolveTenantConfig(found);
+
     return {
       message: 'Profile retrieved successfully',
       data: {
@@ -355,12 +665,29 @@ export class UsersService {
         modules: found.modules || [],
         roles: found.roles || [],
         permissions: found.permissions || [],
+        ...(tenantConfig ? { tenantConfig } : {}),
       },
       meta: {
         totalData: 1,
         id: found._id,
       },
     };
+  }
+
+  private async resolveTenantConfig(user: any): Promise<any> {
+    if (!this.tenantConfigService.isEmbedEnabled()) return null;
+    try {
+      const resolved = await this.tenantConfigService.resolveConfig(
+        user?.tenantId,
+        user?.company,
+      );
+      return resolved?.data ?? null;
+    } catch (error: any) {
+      this.logger.warn(
+        `No se pudo resolver tenantConfig en profile: ${error?.message}`,
+      );
+      return null;
+    }
   }
 
   async getUserModules(user: any) {

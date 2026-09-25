@@ -1,15 +1,19 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { Company } from './entities/company.entity'; // Asegúrate de tener esta entidad definida correctamente
+import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 
 @Injectable()
 export class CompaniesService {
+  private readonly logger = new Logger(CompaniesService.name);
+
   constructor(
     @InjectModel('Company')
     private readonly companyModel: Model<Company>,
+    private readonly tenantConfigService: TenantConfigService,
   ) {}
 
   async create(createCompanyDto: CreateCompanyDto) {
@@ -18,6 +22,20 @@ export class CompaniesService {
 
     if (!result) {
       throw new NotFoundException('Company not created');
+    }
+
+    // Crea la configuración de políticas del nuevo tenant con los valores
+    // por defecto del catálogo. No debe impedir la creación de la empresa.
+    try {
+      await this.tenantConfigService.ensureConfig(
+        String(result.id),
+        String(result.name),
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `No se pudo crear la configuración de políticas para ${result.name}: ${error?.message}`,
+        error?.stack,
+      );
     }
 
     return {

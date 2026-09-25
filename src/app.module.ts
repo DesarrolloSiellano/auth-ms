@@ -18,6 +18,10 @@ import { SessionsModule } from './sessions/sessions.module';
 import { StrategyJwtGlobalModule } from './core/modules/strategyJwtModule.module';
 import { CompaniesModule } from './companies/companies.module';
 import { MailModule } from './mail/mail.module';
+import { MassiveUsersModule } from './massive-users/massive-users.module';
+import { TenantConfigModule } from './tenant-config/tenant-config.module';
+import { AuditModule } from './audit/audit.module';
+import { ReportsModule } from './reports/reports.module';
 import { LoggerModule } from 'nestjs-pino';
 import { envValidationSchema } from './core/config/env.validation';
 import { TenantMiddleware } from './core/database/tenant.middleware';
@@ -25,6 +29,7 @@ import { IdempotencyModule } from './core/idempotency/idempotency.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { APP_GUARD } from '@nestjs/core';
 import { ResponseInterceptor } from './core/interceptors/response.interceptor';
+import { MustChangePasswordInterceptor } from './core/interceptors/must-change-password.interceptor';
 import { IdempotencyInterceptor } from './core/interceptors/idempotency.interceptor';
 import { RpcIdempotencyInterceptor } from './core/interceptors/RCPIdempotency.interceptor';
 import { ServiceAuthGuard } from './core/guards/service-auth.guard';
@@ -91,6 +96,10 @@ import { ServiceAuthGuard } from './core/guards/service-auth.guard';
     SessionsModule,
     CompaniesModule,
     MailModule,
+    MassiveUsersModule,
+    TenantConfigModule,
+    AuditModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -110,6 +119,10 @@ import { ServiceAuthGuard } from './core/guards/service-auth.guard';
     {
       provide: APP_INTERCEPTOR,
       useClass: ResponseInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MustChangePasswordInterceptor,
     },
   ],
   exports: [MailModule],

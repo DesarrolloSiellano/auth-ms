@@ -2,19 +2,24 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CompaniesService } from './companies.service';
 import { getModelToken } from '@nestjs/mongoose';
 import { NotFoundException } from '@nestjs/common';
+import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 
 describe('CompaniesService', () => {
   let service: CompaniesService;
 
   const mockModel: any = jest.fn().mockImplementation((data: any) => ({
     ...data,
-    save: jest.fn().mockResolvedValue({ ...data, _id: 'c1', toObject: () => data }),
+    save: jest.fn().mockResolvedValue({ ...data, _id: 'c1', id: 'c1', toObject: () => data }),
   }));
   mockModel.find = jest.fn();
   mockModel.findById = jest.fn();
   mockModel.findByIdAndUpdate = jest.fn();
   mockModel.findByIdAndDelete = jest.fn();
   mockModel.countDocuments = jest.fn();
+
+  const tenantConfigMock = {
+    ensureConfig: jest.fn().mockResolvedValue(true),
+  };
 
   function leanExec(value: any) {
     return { lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(value) }) };
@@ -29,6 +34,7 @@ describe('CompaniesService', () => {
       providers: [
         CompaniesService,
         { provide: getModelToken('Company'), useValue: mockModel },
+        { provide: TenantConfigService, useValue: tenantConfigMock },
       ],
     }).compile();
 
@@ -44,6 +50,14 @@ describe('CompaniesService', () => {
       const result = await service.create({ name: 'EmpresaX', isActive: true } as any);
       expect(result.message).toContain('created');
       expect(result.meta.id).toBe('c1');
+    });
+
+    it('crea la configuración de políticas por defecto del nuevo tenant', async () => {
+      await service.create({ name: 'EmpresaX', id: '0000001' } as any);
+      expect(tenantConfigMock.ensureConfig).toHaveBeenCalledWith(
+        'c1',
+        'EmpresaX',
+      );
     });
   });
 

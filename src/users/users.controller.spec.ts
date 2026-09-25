@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
-import { UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import { UserAdminService } from './user-admin.service';
 
 describe('UsersController', () => {
   let controller: UsersController;
@@ -25,6 +26,25 @@ describe('UsersController', () => {
     createExternal: jest.fn(),
   };
 
+  const userAdminServiceMock = {
+    search: jest.fn(),
+    export: jest.fn(),
+    softRemove: jest.fn(),
+    hardRemove: jest.fn(),
+    block: jest.fn(),
+    unblock: jest.fn(),
+    setTagsGroups: jest.fn(),
+    bulkAction: jest.fn(),
+    resendInvite: jest.fn(),
+    listSavedFilters: jest.fn(),
+    createSavedFilter: jest.fn(),
+    deleteSavedFilter: jest.fn(),
+    listCustomFields: jest.fn(),
+    createCustomField: jest.fn(),
+    updateCustomField: jest.fn(),
+    deleteCustomField: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
@@ -32,6 +52,7 @@ describe('UsersController', () => {
       controllers: [UsersController],
       providers: [
         { provide: UsersService, useValue: usersServiceMock },
+        { provide: UserAdminService, useValue: userAdminServiceMock },
         { provide: ConfigService, useValue: { get: jest.fn() } },
       ],
     }).compile();
@@ -57,6 +78,22 @@ describe('UsersController', () => {
         controller.create({} as any, { user: { isAdmin: false } }),
       ).toThrow(UnauthorizedException);
     });
+
+    it('rechaza crear SuperAdmin si el autenticado no es SuperAdmin', () => {
+      expect(() =>
+        controller.create({ isSuperAdmin: true } as any, {
+          user: { isAdmin: true, isSuperAdmin: false },
+        }),
+      ).toThrow(ForbiddenException);
+    });
+
+    it('permite crear SuperAdmin si el autenticado es SuperAdmin', () => {
+      usersServiceMock.create.mockReturnValue('ok');
+      const result = controller.create({ isSuperAdmin: true } as any, {
+        user: { isAdmin: true, isSuperAdmin: true },
+      });
+      expect(result).toBe('ok');
+    });
   });
 
   describe('findAll / findByPage', () => {
@@ -80,6 +117,7 @@ describe('UsersController', () => {
         5,
         25,
         'juan',
+        undefined,
       );
       expect(result).toBe('page');
     });
@@ -190,17 +228,27 @@ describe('UsersController', () => {
       ).toThrow(UnauthorizedException);
     });
 
-    it('remove exige admin y delega', () => {
-      usersServiceMock.remove.mockReturnValue('removed');
-      expect(controller.remove('abc', { user: { isAdmin: true } })).toBe(
-        'removed',
-      );
+    it('update rechaza asignar SuperAdmin si el autenticado no es SuperAdmin', () => {
+      expect(() =>
+        controller.update('abc', { isSuperAdmin: true } as any, {
+          user: { isAdmin: true, isSuperAdmin: false },
+        }),
+      ).toThrow(ForbiddenException);
     });
 
-    it('remove rechaza no-admin', () => {
-      expect(() =>
+    it('remove exige admin y delega en soft delete', async () => {
+      userAdminServiceMock.softRemove.mockResolvedValue('removed');
+      const result = await controller.remove('abc', { user: { isAdmin: true } });
+      expect(userAdminServiceMock.softRemove).toHaveBeenCalledWith('abc', {
+        isAdmin: true,
+      });
+      expect(result.data).toBe('removed');
+    });
+
+    it('remove rechaza no-admin', async () => {
+      await expect(
         controller.remove('abc', { user: { isAdmin: false } }),
-      ).toThrow(UnauthorizedException);
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 
@@ -274,12 +322,19 @@ describe('UsersController', () => {
       });
     });
 
-    it('msRemove soporta payload objeto o string', () => {
-      void controller.msRemove({ id: 'abc', serviceKey: 'k' });
-      expect(usersServiceMock.remove).toHaveBeenCalledWith('abc');
+    it('msRemove hace soft delete (objeto o string)', async () => {
+      userAdminServiceMock.softRemove.mockResolvedValue('ok');
+      await controller.msRemove({ id: 'abc', serviceKey: 'k' });
+      expect(userAdminServiceMock.softRemove).toHaveBeenCalledWith(
+        'abc',
+        expect.any(Object),
+      );
 
-      void controller.msRemove('def');
-      expect(usersServiceMock.remove).toHaveBeenCalledWith('def');
+      await controller.msRemove('def');
+      expect(userAdminServiceMock.softRemove).toHaveBeenCalledWith(
+        'def',
+        expect.any(Object),
+      );
     });
   });
 });

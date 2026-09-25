@@ -9,9 +9,9 @@ import {
 export class Login {
   @ApiProperty({
     example: 'usuario@example.com',
-    description: 'Correo electrónico del usuario',
+    description: 'Correo electrónico o nombre de usuario',
   })
-  @IsEmail()
+  @IsString()
   @IsNotEmpty()
   email: string;
 

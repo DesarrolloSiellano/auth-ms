@@ -2,7 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { MailService } from 'src/mail/mail.service';
 import { getModelToken } from '@nestjs/mongoose';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, ConflictException } from '@nestjs/common';
+import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 
 jest.mock('./helpers/user-resolution.helper', () => ({
   resolveUserRoles: jest.fn().mockResolvedValue([]),
@@ -18,6 +19,7 @@ import {
 
 describe('UsersService', () => {
   let service: UsersService;
+  let tenantConfigServiceMock: any;
 
   const mockUserModel: any = jest.fn().mockImplementation((data: any) => ({
     ...data,
@@ -28,6 +30,7 @@ describe('UsersService', () => {
     }),
   }));
   mockUserModel.find = jest.fn();
+  mockUserModel.findOne = jest.fn().mockReturnValue(leanExec(null));
   mockUserModel.findById = jest.fn();
   mockUserModel.findByIdAndUpdate = jest.fn();
   mockUserModel.findByIdAndDelete = jest.fn();
@@ -36,8 +39,14 @@ describe('UsersService', () => {
   const mailServiceMock = { sendEmail: jest.fn().mockResolvedValue(undefined) };
 
   function leanExec(value: any) {
+    const execResult = { exec: jest.fn().mockResolvedValue(value) };
     return {
-      lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(value) }),
+      lean: jest.fn().mockReturnValue(execResult),
+      setOptions: jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(value),
+        }),
+      }),
     };
   }
   function exec(value: any) {
@@ -46,6 +55,11 @@ describe('UsersService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    tenantConfigServiceMock = {
+      isEmbedEnabled: jest.fn().mockReturnValue(false),
+      resolveConfig: jest.fn().mockResolvedValue({ data: {} }),
+      getPolicyValue: jest.fn().mockResolvedValue(0),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -54,6 +68,10 @@ describe('UsersService', () => {
         { provide: getModelToken('Permission'), useValue: {} },
         { provide: getModelToken('Module'), useValue: {} },
         { provide: MailService, useValue: mailServiceMock },
+        {
+          provide: TenantConfigService,
+          useValue: tenantConfigServiceMock,
+        },
       ],
     }).compile();
 
@@ -83,6 +101,105 @@ describe('UsersService', () => {
       expect(result.data).not.toHaveProperty('password');
       expect(result.meta.id).toBe('new-id');
       expect(mailServiceMock.sendEmail).toHaveBeenCalled();
+    });
+
+    it('normaliza email y username a minúsculas', async () => {
+      const dto = {
+        name: 'Juan',
+        lastName: 'Pérez',
+        email: 'J@Mail.com',
+        username: 'JuanP',
+        phone: '',
+        isActived: true,
+        isAdmin: false,
+        isSuperAdmin: false,
+        isNewUser: true,
+      } as any;
+
+      await service.create(dto);
+
+      const created = mockUserModel.mock.calls[0][0];
+      expect(created.email).toBe('j@mail.com');
+      expect(created.username).toBe('juanp');
+    });
+
+    it('lanza conflicto si el username ya existe', async () => {
+      mockUserModel.findOne
+        .mockReturnValueOnce(leanExec(null))
+        .mockReturnValueOnce(leanExec({ _id: 'otro' }));
+
+      await expect(
+        service.create({
+          name: 'Juan',
+          lastName: 'Pérez',
+          email: 'j@mail.com',
+          username: 'juanp',
+        } as any),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('bloquea la creación si se alcanzó el máximo de usuarios (limits.maxUsers)', async () => {
+      tenantConfigServiceMock.getPolicyValue.mockResolvedValue(5);
+      mockUserModel.countDocuments.mockReturnValue({
+        setOptions: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(5),
+        }),
+      });
+
+      await expect(
+        service.create({
+          name: 'Juan',
+          lastName: 'Pérez',
+          email: 'j@mail.com',
+          company: 'EmpresaX',
+        } as any),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('permite crear si el límite es 0 (ilimitado)', async () => {
+      tenantConfigServiceMock.getPolicyValue.mockResolvedValue(0);
+      mockUserModel.findOne.mockReturnValue(leanExec(null));
+
+      const result = await service.create({
+        name: 'Juan',
+        lastName: 'Pérez',
+        email: 'j@mail.com',
+        company: 'EmpresaX',
+        isActived: true,
+        isAdmin: false,
+        isSuperAdmin: false,
+        isNewUser: true,
+      } as any);
+
+      expect(result.message).toContain('created');
+    });
+  });
+
+  describe('checkAvailability', () => {
+    it('devuelve emailExists y usernameExists', async () => {
+      mockUserModel.findOne
+        .mockReturnValueOnce(leanExec({ _id: 'x' }))
+        .mockReturnValueOnce(leanExec(null));
+
+      const result = await service.checkAvailability({
+        email: 'J@Mail.com',
+        username: 'JuanP',
+      });
+
+      expect(result.data.emailExists).toBe(true);
+      expect(result.data.usernameExists).toBe(false);
+    });
+
+    it('no consulta cuando no hay valores', async () => {
+      mockUserModel.findOne.mockClear();
+
+      const result = await service.checkAvailability({});
+
+      expect(result.data).toEqual({
+        emailExists: false,
+        usernameExists: false,
+      });
+      expect(mockUserModel.findOne).not.toHaveBeenCalled();
     });
   });
 
@@ -114,7 +231,7 @@ describe('UsersService', () => {
 
       const result = await service.findAll({ company: 'EmpX', isSuperAdmin: false });
 
-      expect(mockUserModel.find).toHaveBeenCalledWith({ company: 'EmpX' });
+      expect(mockUserModel.find).toHaveBeenCalledWith({ deletedAt: null, company: 'EmpX' });
       expect(result[0]).not.toHaveProperty('password');
     });
 
@@ -123,7 +240,7 @@ describe('UsersService', () => {
 
       await service.findAll({ company: 'EmpX', isSuperAdmin: true });
 
-      expect(mockUserModel.find).toHaveBeenCalledWith({});
+      expect(mockUserModel.find).toHaveBeenCalledWith({ deletedAt: null });
     });
 
     it('lanza NotFound si no hay usuarios', async () => {
@@ -156,7 +273,7 @@ describe('UsersService', () => {
 
       const result = await service.findActiveByTenant(undefined, false);
 
-      expect(mockUserModel.find).toHaveBeenCalledWith({ isActived: true });
+      expect(mockUserModel.find).toHaveBeenCalledWith({ isActived: true, deletedAt: null });
       expect(result.data).toHaveLength(1);
     });
   });
@@ -194,6 +311,32 @@ describe('UsersService', () => {
 
       expect(result.meta.totalData).toBe(1);
     });
+
+    it('aplica filtros avanzados combinados', async () => {
+      mockUserModel.find.mockReturnValue({
+        skip: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue(leanExec([])),
+        }),
+      });
+      mockUserModel.countDocuments.mockReturnValue(exec(0));
+
+      await service.findByPage(
+        { isSuperAdmin: true },
+        0,
+        10,
+        '',
+        JSON.stringify({ estado: 'true', rol: 'ADM' }),
+      );
+
+      expect(mockUserModel.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isActived: true,
+          $and: expect.arrayContaining([
+            expect.objectContaining({ $or: expect.any(Array) }),
+          ]),
+        }),
+      );
+    });
   });
 
   describe('findByPagination', () => {
@@ -218,7 +361,9 @@ describe('UsersService', () => {
 
   describe('findOne', () => {
     it('devuelve el usuario sanitizado', async () => {
-      mockUserModel.findById.mockReturnValue(leanExec({ _id: 'a', password: 'x' }));
+      mockUserModel.findOne.mockReturnValueOnce(
+        leanExec({ _id: 'a', password: 'x' }),
+      );
 
       const result = await service.findOne('a');
 
@@ -226,7 +371,7 @@ describe('UsersService', () => {
     });
 
     it('lanza NotFound si no existe', async () => {
-      mockUserModel.findById.mockReturnValue(leanExec(null));
+      mockUserModel.findOne.mockReturnValueOnce(leanExec(null));
 
       await expect(service.findOne('a')).rejects.toThrow(NotFoundException);
     });
