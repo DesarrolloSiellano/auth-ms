@@ -11,6 +11,7 @@ export interface IdentityPayload {
   isTrial?: boolean;
   trialStartedAt?: Date | null;
   trialEndsAt?: Date | null;
+  emailVerified?: boolean;
   sid?: string;
 }
 
@@ -33,6 +34,7 @@ export function buildIdentityPayload(user: any, sid?: string): IdentityPayload {
     isTrial: user.isTrial === true,
     trialStartedAt: user.trialStartedAt ?? null,
     trialEndsAt: user.trialEndsAt ?? null,
+    emailVerified: user.emailVerifiedAt != null,
     ...(sid ? { sid } : {}),
   };
 }

@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
+import { ParamFormat } from 'src/core/decorators/param-format.decorator';
 import { ReportsService } from './reports.service';
 import type { ReportFormat } from './interfaces/report.interface';
 
@@ -30,6 +31,7 @@ export class ReportsController {
   }
 
   @Post(':id/preview')
+  @ParamFormat({ param: 'id', kind: 'token' })
   @ApiOperation({ summary: 'Vista previa de un reporte' })
   preview(
     @Param('id') id: string,
@@ -45,6 +47,7 @@ export class ReportsController {
   }
 
   @Post(':id/data')
+  @ParamFormat({ param: 'id', kind: 'token' })
   @ApiOperation({
     summary: 'Datos completos de un reporte (JSON, para PDF en el navegador)',
   })
@@ -62,6 +65,7 @@ export class ReportsController {
   }
 
   @Post(':id/export')
+  @ParamFormat({ param: 'id', kind: 'token' })
   @ApiOperation({ summary: 'Exporta un reporte en streaming (xlsx/csv)' })
   async export(
     @Param('id') id: string,

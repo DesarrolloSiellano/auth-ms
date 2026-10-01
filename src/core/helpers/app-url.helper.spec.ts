@@ -1,13 +1,10 @@
-import { resolveRequestOrigin, resolveAppBaseUrl } from './app-url.helper';
+import {
+  resolveRequestOrigin,
+  resolveAppBaseUrl,
+  DEFAULT_FRONT_URL,
+} from './app-url.helper';
 
 describe('app-url.helper', () => {
-  const originalAppUrl = process.env.APP_URL;
-
-  afterEach(() => {
-    if (originalAppUrl === undefined) delete process.env.APP_URL;
-    else process.env.APP_URL = originalAppUrl;
-  });
-
   it('usa el header Origin automáticamente', () => {
     expect(
       resolveRequestOrigin({ headers: { origin: 'http://localhost:4200' } }),
@@ -33,18 +30,13 @@ describe('app-url.helper', () => {
     expect(resolveRequestOrigin(undefined)).toBeUndefined();
   });
 
-  it('resolveAppBaseUrl prioriza el request sobre APP_URL', () => {
-    process.env.APP_URL = 'https://config.example.com';
+  it('resolveAppBaseUrl prioriza el origen de la petición', () => {
     expect(
       resolveAppBaseUrl({ headers: { origin: 'http://localhost:4200' } }),
     ).toBe('http://localhost:4200');
   });
 
-  it('resolveAppBaseUrl cae a APP_URL y luego al default', () => {
-    process.env.APP_URL = 'https://config.example.com';
-    expect(resolveAppBaseUrl({})).toBe('https://config.example.com');
-
-    delete process.env.APP_URL;
-    expect(resolveAppBaseUrl({})).toBe('https://app.bponet.com.co');
+  it('resolveAppBaseUrl cae al front por defecto (no usa env)', () => {
+    expect(resolveAppBaseUrl({})).toBe(DEFAULT_FRONT_URL);
   });
 });

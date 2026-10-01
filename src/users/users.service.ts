@@ -13,9 +13,13 @@ import { UserLimitsService } from './user-limits.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { MailService } from 'src/mail/mail.service';
+import {
+  applyVerificationToken,
+  sendVerificationEmail,
+} from 'src/mail/helpers/email-verification.helper';
 import * as generatePassword from 'generate-password';
 import * as crypto from 'crypto';
 import {
@@ -27,6 +31,7 @@ import { toPublicUser } from './helpers/user.sanitizer';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 import { FeaturePolicyService } from 'src/core/services/feature-policy.service';
 import { tenantLocalStorage } from 'src/core/database/tenant.context';
+import { DEFAULT_FRONT_URL } from 'src/core/helpers/app-url.helper';
 
 @Injectable()
 export class UsersService {
@@ -45,7 +50,7 @@ export class UsersService {
     @Optional() private readonly userAdminService?: UserAdminService,
   ) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto, requester?: any) {
     const email = this.normalizeEmail(createUserDto.email);
     const username = this.normalizeUsername(createUserDto.username);
 
@@ -87,7 +92,6 @@ export class UsersService {
 
     const userData: any = {
       ...createUserDto,
-      _id: createUserDto._id, // Si viene de otra app, lo usamos; si no, será undefined y Mongo lo generará
       password: tempPassword,
       // Al crear (invitación o temporal) el usuario debe establecer/cambiar su
       // contraseña. `isNewUser` se mantiene en sincronía (compatibilidad).
@@ -95,6 +99,13 @@ export class UsersService {
       isNewUser: true,
     };
     delete userData.invite;
+
+    // A2b: `permissions` y `modules` solo los asigna un SuperAdmin. Un admin de
+    // empresa conserva `roles` (con topes) e `isAdmin`.
+    if (requester && !requester.isSuperAdmin) {
+      delete userData.permissions;
+      delete userData.modules;
+    }
 
     if (createUserDto.customFields !== undefined) {
       userData.customFields = this.userAdminService
@@ -128,8 +139,24 @@ export class UsersService {
     if (username) userData.username = username;
     else delete userData.username;
 
+    // Token de verificación de correo (se guarda junto con el alta).
+    const verifyRaw = applyVerificationToken(userData);
+
     const newUser = new this.userModel(userData);
     const result = await newUser.save();
+
+    // Envío del correo de verificación (token de un solo uso), no bloqueante.
+    sendVerificationEmail(
+      this.mailService,
+      result,
+      verifyRaw,
+      this.frontUrl(userData.redirectUri),
+    ).catch((error: any) => {
+      this.logger.error(
+        'Error sending verification email: ' + error?.message,
+        error?.stack,
+      );
+    });
 
     if (isInvite) {
       const inviteUrl = `${this.frontUrl(userData.redirectUri)}/set-password?token=${inviteToken}`;
@@ -230,6 +257,11 @@ export class UsersService {
     const isNewUser =
       payload.isNewUser !== undefined ? payload.isNewUser : true;
 
+    // `_id` opcional (apps externas): si viene, debe ser un ObjectId válido.
+    if (payload._id !== undefined && !Types.ObjectId.isValid(payload._id)) {
+      throw new BadRequestException('El _id enviado no es válido');
+    }
+
     const userData = {
       _id: payload._id,
       tenantId: payload.tenantId || payload.company || 'default_tenant',
@@ -255,8 +287,23 @@ export class UsersService {
           : isNewUser,
     };
 
+    const verifyRaw = applyVerificationToken(userData);
+
     const newUser = new this.userModel(userData);
     const result = await newUser.save();
+
+    // Verificación de correo (token de un solo uso), no bloqueante.
+    sendVerificationEmail(
+      this.mailService,
+      result,
+      verifyRaw,
+      this.frontUrl(payload.redirectUri),
+    ).catch((error: any) => {
+      this.logger.error(
+        'Error sending verification email: ' + error?.message,
+        error?.stack,
+      );
+    });
 
     this.mailService
       .sendEmail({
@@ -559,11 +606,6 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto, requester?: any) {
     // Aislamiento por empresa + no escalar privilegios.
     if (requester && !requester.isSuperAdmin) {
-      if ((updateUserDto as any).isAdmin !== undefined) {
-        throw new ForbiddenException(
-          'Solo un SuperAdmin puede cambiar el rol de administrador',
-        );
-      }
       const target: any = await this.userModel
         .findOne({ _id: id })
         .select('isSuperAdmin')
@@ -617,7 +659,7 @@ export class UsersService {
     }
 
     const setFields: any = { ...updateUserDto };
-    // Defensa en profundidad: nunca permitir campos privilegiados por esta vía.
+    // Defensa en profundidad: campos nunca editables por esta vía.
     for (const field of [
       'isSuperAdmin',
       'company',
@@ -625,8 +667,6 @@ export class UsersService {
       'password',
       'passwordResetToken',
       'passwordResetExpires',
-      'permissions',
-      'modules',
       '_id',
       'created',
       'modified',
@@ -637,6 +677,18 @@ export class UsersService {
       'updatedAtHour',
     ]) {
       delete setFields[field];
+    }
+    // A2b: `permissions`/`modules` solo SuperAdmin; `isAdmin` admin/SuperAdmin
+    // (no usuarios de servicio anónimos).
+    const requesterIsSuper = requester?.isSuperAdmin === true;
+    const requesterIsAdminOrSuper =
+      requesterIsSuper || requester?.isAdmin === true;
+    if (!requesterIsSuper) {
+      delete setFields.permissions;
+      delete setFields.modules;
+    }
+    if (!requesterIsAdminOrSuper) {
+      delete setFields.isAdmin;
     }
     delete setFields.email;
     delete setFields.username;
@@ -762,7 +814,10 @@ export class UsersService {
   }
 
   private frontUrl(redirectUri?: string): string {
-    return redirectUri || process.env.APP_URL || 'https://app.bponet.com.co';
+    if (!redirectUri || redirectUri === 'null' || redirectUri === 'undefined') {
+      return DEFAULT_FRONT_URL;
+    }
+    return redirectUri;
   }
 
   /**

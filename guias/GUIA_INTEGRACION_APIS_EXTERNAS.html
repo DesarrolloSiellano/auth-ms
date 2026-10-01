@@ -821,11 +821,13 @@ curl -X POST <span class="s">"https://app.bponet.com.co/auth/api/auth/login"</sp
     <thead><tr><th style="width:30%">Endpoint</th><th style="width:16%">Auth</th><th>Descripción</th></tr></thead>
     <tbody>
       <tr><td class="mono">POST /api/auth/login</td><td>Pública</td><td>Inicia sesión. Acepta <code class="inl">?redirectUri=</code> para la redirección SSO.</td></tr>
-      <tr><td class="mono">POST /api/auth/refresh</td><td>Pública</td><td><code class="inl">{ refreshToken }</code> → nuevo access token.</td></tr>
+      <tr><td class="mono">POST /api/auth/refresh</td><td>Pública</td><td><code class="inl">{ refreshToken }</code> → nuevo access token <b>y nuevo <code class="inl">refreshToken</code></b> (rotación). Reutilizar un refresh ya rotado revoca la sesión.</td></tr>
       <tr><td class="mono">POST /api/auth/logout</td><td>Pública</td><td>Revoca la sesión. Acepta <code class="inl">{ refreshToken }</code>.</td></tr>
       <tr><td class="mono">POST /api/auth/change-password</td><td>JWT</td><td>Cambia la contraseña. El <code class="inl">_id</code> se toma del token, nunca del body.</td></tr>
-      <tr><td class="mono">POST /api/auth/recovery-password</td><td>Pública</td><td>Envía el correo de recuperación.</td></tr>
-      <tr><td class="mono">POST /api/auth/set-password-token</td><td>Pública</td><td>Establece la contraseña con el token de invitación.</td></tr>
+      <tr><td class="mono">POST /api/auth/recovery-password</td><td>Pública</td><td>Envía un <b>enlace de un solo uso</b> por correo. Respuesta genérica (no revela si el correo existe).</td></tr>
+      <tr><td class="mono">POST /api/auth/set-password-token</td><td>Pública</td><td>Establece la contraseña con el token de invitación/recuperación (un solo uso).</td></tr>
+      <tr><td class="mono">POST /api/auth/verify-email</td><td>Pública</td><td>Verifica el correo con un token de un solo uso (<code class="inl">{ token }</code>).</td></tr>
+      <tr><td class="mono">POST /api/auth/resend-verification</td><td>JWT</td><td>Reenvía el correo de verificación (token de un solo uso).</td></tr>
       <tr><td class="mono">GET /api/auth/validate-user</td><td>JWT</td><td>Valida el token y devuelve el usuario.</td></tr>
       <tr><td class="mono"><b>GET /api/users/profile</b></td><td><b>x-service-key</b> o JWT</td><td><b>Endpoint clave de integración.</b> Identidad + modules + roles + permissions. Requiere <code class="inl">x-user-id</code> o <code class="inl">?userId=</code> si se usa la clave de servicio.</td></tr>
       <tr><td class="mono">GET /api/users/profile/modules</td><td>x-service-key o JWT</td><td>Solo el árbol de módulos y rutas.</td></tr>

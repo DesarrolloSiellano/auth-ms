@@ -159,6 +159,7 @@ describe('AuthService', () => {
       isTrial: false,
       trialStartedAt: null,
       trialEndsAt: null,
+      emailVerified: false,
       sid: expect.any(String),
     });
     expect(accessPayload).not.toHaveProperty('modules');
@@ -243,6 +244,7 @@ describe('AuthService', () => {
         isTrial: false,
         trialStartedAt: null,
         trialEndsAt: null,
+        emailVerified: false,
         sid: '507f1f77bcf86cd799439011',
       });
       expect(verifySpy).toHaveBeenCalledWith(

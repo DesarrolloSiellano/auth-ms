@@ -16,12 +16,17 @@ import { User } from 'src/users/entities/user.entity';
 import { Company } from 'src/companies/entities/company.entity';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from 'src/mail/mail.service';
+import {
+  applyVerificationToken,
+  sendVerificationEmail,
+} from 'src/mail/helpers/email-verification.helper';
 import { SessionsService } from 'src/sessions/sessions.service';
 import * as crypto from 'crypto';
 import { SetPasswordWithToken } from './dto/auth.dto';
 import { buildIdentityPayload } from './helpers/identity-payload.helper';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 import { LocaleService, DEFAULT_TIMEZONE, DEFAULT_LOCALE } from 'src/core/services/locale.service';
+import { DEFAULT_FRONT_URL } from 'src/core/helpers/app-url.helper';
 
 export interface LoginRestriction {
   code: string;
@@ -787,10 +792,7 @@ export class AuthService {
         return genericResponse;
       }
 
-      const appUrl =
-        redirectUri ||
-        process.env.APP_URL ||
-        'https://app.bponet.com.co';
+      const appUrl = redirectUri || DEFAULT_FRONT_URL;
 
       // Token de un solo uso (mismo patrón que la invitación).
       const { raw, hash, expires } = this.generateOneTimeToken();
@@ -840,7 +842,7 @@ export class AuthService {
   }
 
   /** Envía (o reenvía) el correo de verificación con token de un solo uso. */
-  async resendEmailVerification(userId: string) {
+  async resendEmailVerification(userId: string, frontUrl?: string) {
     const user = await this.userModel.findById(userId).exec();
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
@@ -849,26 +851,9 @@ export class AuthService {
       return { message: 'El correo ya está verificado' };
     }
 
-    const { raw, hash, expires } = this.generateOneTimeToken();
-    user.emailVerificationToken = hash;
-    user.emailVerificationExpires = expires;
+    const raw = applyVerificationToken(user);
     await user.save();
-
-    const appUrl = process.env.APP_URL || 'https://app.bponet.com.co';
-    const verifyUrl = `${appUrl.replace(/\/+$/, '')}/verify-email?token=${raw}`;
-
-    await this.mailService.sendEmail({
-      to: user.email,
-      subject: 'Verifica tu correo - BpoNet',
-      template: 'verify',
-      tenantId: user.tenantId,
-      company: user.company,
-      context: {
-        name: user.name,
-        platform_name: 'BpoNet',
-        verification_url: verifyUrl,
-      },
-    });
+    await sendVerificationEmail(this.mailService, user, raw, frontUrl);
 
     return { message: 'Correo de verificación enviado' };
   }

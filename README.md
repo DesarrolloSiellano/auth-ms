@@ -128,6 +128,10 @@ Los comandos `@MessagePattern` (TCP) también están limitados por `RpcThrottler
 - **JWT:** `HS256` + `issuer`/`audience` (`JWT_ISSUER`/`JWT_AUDIENCE`) en firma y verificación; sin default de 30d.
 - **Helmet + CORS:** cabeceras de seguridad; allowlist de CORS reutilizando `SSO_ALLOWED_ORIGINS`. Los endpoints de documentación (`/api-docs`, `/api/tcp-docs`, `/api/rest-docs`) siguen públicos.
 - **Recovery y verificación por token de un solo uso:** recuperación envía enlace `…/set-password?token=…`; verificación con `POST /api/auth/verify-email` y reenvío en `POST /api/auth/resend-verification`.
+- **Autorización de usuarios (A2b):** `roles` e `isAdmin` los gestiona un admin; `permissions`/`modules` solo un SuperAdmin (en creación individual, masiva y edición). El catálogo de roles/permisos/módulos es SuperAdmin.
+- **Validación de parámetros (`@ParamFormat`):** `:id`/`:userId` como ObjectId y `:key`/`:tenantId` con patrón seguro → 400 si son inválidos.
+- **Auditoría sanitizada:** `AuditService` redacta claves sensibles (`password`, `token`, `refreshToken`, …) y trunca estructuras profundas/largas.
+- **Enlaces de correo con el front real:** los correos con enlace (invitación, bienvenida, recuperación, verificación) usan el **origen real de la petición** (`Origin`/`Referer` vía `resolveRequestOrigin`) y, si no hay, el front por defecto. **No** se usa `APP_URL` de entorno.
 
 
 ### Crear usuario superadmin en producción

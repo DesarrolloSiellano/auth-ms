@@ -259,7 +259,7 @@ describe('MassiveUsersService', () => {
     expect(created.company).toBe('BPONET');
     expect(created.tenantId).toBe('000000');
     expect(created.password).toBeTruthy();
-    expect(mailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(mailService.sendEmail).toHaveBeenCalledTimes(2);
   });
 
   it('ignora columnas Admin/SuperAdmin del archivo (siempre false)', async () => {

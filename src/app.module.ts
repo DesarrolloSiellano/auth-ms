@@ -37,6 +37,7 @@ import { TenantContextInterceptor } from './core/interceptors/tenant-context.int
 import { RpcTenantContextInterceptor } from './core/interceptors/rpc-tenant-context.interceptor';
 import { ServiceAuthGuard } from './core/guards/service-auth.guard';
 import { RpcThrottlerGuard } from './core/guards/rpc-throttler.guard';
+import { ParamFormatGuard } from './core/guards/param-format.guard';
 
 @Module({
   imports: [
@@ -131,6 +132,10 @@ import { RpcThrottlerGuard } from './core/guards/rpc-throttler.guard';
     {
       provide: APP_GUARD,
       useClass: RpcThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ParamFormatGuard,
     },
     {
       provide: APP_INTERCEPTOR,

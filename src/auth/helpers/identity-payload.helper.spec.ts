@@ -35,6 +35,7 @@ describe('buildIdentityPayload', () => {
       isTrial: false,
       trialStartedAt: null,
       trialEndsAt: null,
+      emailVerified: false,
     });
   });
 

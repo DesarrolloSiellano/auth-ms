@@ -168,10 +168,11 @@ export class AuthController {
     @Query('redirectUri') redirectUri: string,
     @Req() req?: any,
   ) {
-    return this.authService.recoveryPassword(
-      recoveryPassword,
-      redirectUri || resolveRequestOrigin(req),
-    );
+    const requested =
+      redirectUri && redirectUri !== 'null' && redirectUri !== 'undefined'
+        ? redirectUri
+        : resolveRequestOrigin(req);
+    return this.authService.recoveryPassword(recoveryPassword, requested);
   }
 
   @Post('change-password')
@@ -314,7 +315,10 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reenviar correo de verificación' })
   resendVerification(@Req() req: any) {
-    return this.authService.resendEmailVerification(String(req.user._id));
+    return this.authService.resendEmailVerification(
+      String(req.user._id),
+      resolveRequestOrigin(req),
+    );
   }
 
   @Throttle({ default: { limit: 5, ttl: 60000 } })

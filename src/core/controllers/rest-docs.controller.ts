@@ -66,9 +66,13 @@ const REST_ENDPOINTS: RestEndpointDoc[] = [
     method: 'POST',
     path: '/api/auth/recovery-password',
     auth: 'Público',
-    description: 'Recuperación de contraseña (envía temporal por correo).',
+    description:
+      'Recuperación de contraseña (envía enlace de un solo uso por correo). Respuesta genérica.',
     requestExample: { email: 'juan@empresa.com' },
-    responseExample: ok({ sent: true }, 'Contraseña temporal enviada por correo'),
+    responseExample: ok(
+      { sent: true },
+      'Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña',
+    ),
   },
   {
     method: 'POST',
@@ -89,8 +93,25 @@ const REST_ENDPOINTS: RestEndpointDoc[] = [
       status: 'Success',
       message: 'Token refreshed successfully',
       accessToken: 'eyJhbGciOi...',
+      refreshToken: 'eyJhbGciOi...',
       payload: { _id: 'u1', email: 'juan@empresa.com', company: 'EmpresaX' },
     },
+  },
+  {
+    method: 'POST',
+    path: '/api/auth/verify-email',
+    auth: 'Público',
+    description: 'Verifica el correo con un token de un solo uso.',
+    requestExample: { token: 'token-de-verificacion' },
+    responseExample: ok({ verified: true }, 'Correo verificado exitosamente'),
+  },
+  {
+    method: 'POST',
+    path: '/api/auth/resend-verification',
+    auth: 'JWT',
+    description: 'Reenvía el correo de verificación con token de un solo uso.',
+    requestExample: { headers: { Authorization: 'Bearer eyJhbGciOi...' } },
+    responseExample: ok({ sent: true }, 'Correo de verificación enviado'),
   },
   {
     method: 'POST',

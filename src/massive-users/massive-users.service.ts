@@ -10,6 +10,11 @@ import { Permission } from 'src/permissions/entities/permission.entity';
 import { Module } from 'src/modules/entities/module.entity';
 import { Company } from 'src/companies/entities/company.entity';
 import { MailService } from 'src/mail/mail.service';
+import {
+  applyVerificationToken,
+  sendVerificationEmail,
+} from 'src/mail/helpers/email-verification.helper';
+import { DEFAULT_FRONT_URL } from 'src/core/helpers/app-url.helper';
 import { UserLimitsService } from 'src/users/user-limits.service';
 import {
   MassiveUploadReportDto,
@@ -151,9 +156,9 @@ export class MassiveUsersService {
     const seenEmails = new Set<string>();
     const seenUsernames = new Set<string>();
 
-    // Base del sitio para los enlaces de bienvenida (origen real de la app).
-    const loginBase =
-      baseUrl || process.env.APP_URL || 'https://app.bponet.com.co';
+    // Base del sitio para los enlaces de bienvenida/verificación (origen real
+    // de la app que origina la petición; fallback al front por defecto).
+    const loginBase = baseUrl || DEFAULT_FRONT_URL;
 
     // Límite de usuarios por empresa (limits.maxUsers; 0 = ilimitado).
     const userLimits = new Map<string, number>();
@@ -311,8 +316,14 @@ export class MassiveUsersService {
           }
         }
 
-        const permissions = await this.resolvePermissions(permissionsInput);
-        const modules = await this.resolveModules(modulesInput);
+        // A2b: `permissions`/`modules` solo los asigna un SuperAdmin.
+        // Un admin de empresa solo puede asignar `roles` (con topes).
+        const permissions = isSuperAdmin
+          ? await this.resolvePermissions(permissionsInput)
+          : [];
+        const modules = isSuperAdmin
+          ? await this.resolveModules(modulesInput)
+          : [];
 
         const tempPassword = generatePassword.generate({
           length: 12,
@@ -341,7 +352,18 @@ export class MassiveUsersService {
           mustChangePassword: true,
         });
 
+        const verifyRaw = applyVerificationToken(newUser);
         await newUser.save();
+
+        // Verificación de correo (token de un solo uso), no bloqueante.
+        sendVerificationEmail(this.mailService, newUser, verifyRaw, loginBase).catch(
+          (mailError: any) => {
+            this.logger.error(
+              `Error enviando verificación a ${email}: ${mailError?.message}`,
+              mailError?.stack,
+            );
+          },
+        );
 
         companyUserCounts.set(company, (companyUserCounts.get(company) || 0) + 1);
         for (const role of roles) {

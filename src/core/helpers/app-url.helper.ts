@@ -1,9 +1,16 @@
 /**
+ * URL por defecto del frontend de producción. Se usa SOLO como último recurso
+ * cuando no hay origen de petición ni URL explícita (p. ej. llamadas TCP sin
+ * `redirectUri`). No se lee de variables de entorno.
+ */
+export const DEFAULT_FRONT_URL = 'https://app.bponet.com.co';
+
+/**
  * Resuelve la URL base del sitio donde corre la aplicación (frontend) a partir
  * de la petición entrante, para construir enlaces dinámicos en correos
- * (invitaciones, bienvenida, recuperación).
+ * (invitaciones, bienvenida, recuperación, verificación).
  *
- * Prioridad: header `Origin` → origen del `Referer` → `APP_URL` → default.
+ * Prioridad: header `Origin` → origen del `Referer`.
  */
 export function resolveRequestOrigin(req?: any): string | undefined {
   const headers = req?.headers;
@@ -27,13 +34,9 @@ export function resolveRequestOrigin(req?: any): string | undefined {
   return undefined;
 }
 
-/** URL base resuelta (request → APP_URL → default de producción). */
+/** URL base resuelta (request → default del frontend). */
 export function resolveAppBaseUrl(req?: any): string {
-  return (
-    resolveRequestOrigin(req) ||
-    process.env.APP_URL ||
-    'https://app.bponet.com.co'
-  );
+  return resolveRequestOrigin(req) || DEFAULT_FRONT_URL;
 }
 
 function stripTrailingSlash(url: string): string {

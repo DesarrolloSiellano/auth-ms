@@ -90,12 +90,15 @@ export class UsersController {
       createUserDto.company = user.company;
       (createUserDto as any).tenantId = user.tenantId || user.company;
     }
-    // Los enlaces de invitación/bienvenida usan el origen real del sitio.
-    if (!createUserDto.redirectUri) {
-      const origin = resolveRequestOrigin(req);
-      if (origin) createUserDto.redirectUri = origin;
-    }
-    return this.usersService.create(createUserDto);
+    // El enlace del correo usa el origen real del front que origina la petición.
+    const origin = resolveRequestOrigin(req);
+    const provided = createUserDto.redirectUri;
+    createUserDto.redirectUri =
+      origin ||
+      (provided && provided !== 'null' && provided !== 'undefined'
+        ? provided
+        : undefined);
+    return this.usersService.create(createUserDto, user);
   }
 
   @Get()
@@ -667,12 +670,7 @@ export class UsersController {
     if (!user.isAdmin && !user.isSuperAdmin) {
       throw new UnauthorizedException('No tienes permiso para actualizar usuarios');
     }
-    // Solo un SuperAdmin puede otorgar/quitar `isAdmin`.
-    if (updateUserDto.isAdmin !== undefined && !user.isSuperAdmin) {
-      throw new ForbiddenException(
-        'Solo un SuperAdmin puede cambiar el rol de administrador',
-      );
-    }
+    // La restricción de `isAdmin`/`permissions`/`modules` (A2b) se aplica en el servicio.
     return this.usersService.update(id, updateUserDto, user);
   }
 

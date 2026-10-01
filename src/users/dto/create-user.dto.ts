@@ -9,15 +9,6 @@ import {
 } from 'class-validator';
 
 export class CreateUserDto {
-  @ApiPropertyOptional({
-    example: '67f6c8a9b12d4a0012345678',
-    description:
-      'ID opcional del usuario. Si se envía, se guarda con este _id; si no, Mongo lo genera',
-  })
-  @IsOptional()
-  @IsString()
-  _id?: string;
-
   @ApiProperty({ example: 'Juan', description: 'Nombre del usuario' })
   @IsString()
   @IsNotEmpty()

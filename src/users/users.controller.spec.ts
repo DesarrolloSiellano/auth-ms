@@ -102,6 +102,7 @@ describe('UsersController', () => {
       });
       expect(usersServiceMock.create).toHaveBeenCalledWith(
         expect.objectContaining({ company: 'EmpresaA', tenantId: 'T-1' }),
+        expect.objectContaining({ isAdmin: true }),
       );
     });
 
@@ -248,12 +249,17 @@ describe('UsersController', () => {
       ).toThrow(UnauthorizedException);
     });
 
-    it('update rechaza cambiar isAdmin si el autenticado no es SuperAdmin', () => {
-      expect(() =>
-        controller.update('abc', { isAdmin: true } as any, {
-          user: { isAdmin: true, isSuperAdmin: false },
-        }),
-      ).toThrow(ForbiddenException);
+    it('delega isAdmin al servicio (la restricción A2b va en el servicio)', () => {
+      usersServiceMock.update.mockReturnValue('updated');
+      const result = controller.update('abc', { isAdmin: true } as any, {
+        user: { isAdmin: true, isSuperAdmin: false },
+      });
+      expect(result).toBe('updated');
+      expect(usersServiceMock.update).toHaveBeenCalledWith(
+        'abc',
+        expect.objectContaining({ isAdmin: true }),
+        expect.objectContaining({ isAdmin: true }),
+      );
     });
 
     it('remove exige admin y delega en soft delete', async () => {

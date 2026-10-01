@@ -119,6 +119,27 @@ describe('UsersService', () => {
       expect(mailServiceMock.sendEmail).toHaveBeenCalled();
     });
 
+    it('A2b: un admin no puede asignar permissions/modules al crear', async () => {
+      await service.create(
+        {
+          name: 'Juan',
+          lastName: 'Pérez',
+          email: 'a2b@mail.com',
+          isActived: true,
+          isAdmin: false,
+          isSuperAdmin: false,
+          permissions: [{ name: 'p' }],
+          modules: [{ name: 'm' }],
+        } as any,
+        { isAdmin: true, isSuperAdmin: false },
+      );
+
+      const created =
+        mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
+      expect(created.permissions).toBeUndefined();
+      expect(created.modules).toBeUndefined();
+    });
+
     it('normaliza email y username a minúsculas', async () => {
       const dto = {
         name: 'Juan',
@@ -281,7 +302,7 @@ describe('UsersService', () => {
   describe('createExternal', () => {
     it('crea un usuario externo resolviendo roles/permisos/módulos', async () => {
       const payload = {
-        _id: 'ext-1',
+        _id: '507f1f77bcf86cd799439011',
         name: 'Juan',
         lastName: 'Pérez',
         email: 'j@mail.com',

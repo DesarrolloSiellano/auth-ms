@@ -78,6 +78,11 @@
 - Límites: `login` 5/min · `refresh`/`changePassword` 10/min · `validateUser`/`validateSession` 600/min · resto 100/min.
 - Toggle: `RPC_THROTTLE_ENABLED` (`true` por defecto). Por instancia (Redis en multi-instancia). El HTTP sigue con `ThrottlerHybridGuard`.
 
+### Validación de parámetros y auditoría
+
+- `@ParamFormat({ param, kind })` + `ParamFormatGuard` (global): valida `:id`/`:userId` como ObjectId y `:key`/`:tenantId` con patrón seguro (400 si son inválidos), evitando que lleguen valores inválidos a Mongo.
+- `AuditService` sanitiza `detail`: redacta claves sensibles (`password`, `token`, `refreshToken`, `accessToken`, `secret`, `serviceKey`, `authorization`, …) y trunca strings (512), profundidad (5) y arrays (50).
+
 ---
 
 ## 5. F3 — Canal REST reforzado (JWT o clave de servicio)

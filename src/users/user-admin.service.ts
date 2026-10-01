@@ -20,6 +20,7 @@ import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 import { FeaturePolicyService } from 'src/core/services/feature-policy.service';
 import { SessionsService } from 'src/sessions/sessions.service';
 import { AuditService } from 'src/audit/audit.service';
+import { DEFAULT_FRONT_URL } from 'src/core/helpers/app-url.helper';
 import type { Response } from 'express';
 import { streamCsv } from 'src/reports/helpers/csv.helper';
 import { streamStyledExcel } from 'src/reports/helpers/styled-excel.helper';
@@ -148,9 +149,10 @@ export class UserAdminService {
   }
 
   private frontUrl(redirectUri?: string): string {
-    return (
-      redirectUri || process.env.APP_URL || 'https://app.bponet.com.co'
-    );
+    if (!redirectUri || redirectUri === 'null' || redirectUri === 'undefined') {
+      return DEFAULT_FRONT_URL;
+    }
+    return redirectUri;
   }
 
   // --------------------------------------------------------------- Búsqueda

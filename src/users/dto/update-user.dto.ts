@@ -6,7 +6,7 @@ import {
   IsOptional,
   IsString,
 } from 'class-validator';
-import { Rol } from './create-user.dto';
+import { Rol, Permission, Module } from './create-user.dto';
 
 /**
  * DTO de actualización de usuario con CAMPOS SEGUROS únicamente.
@@ -74,6 +74,16 @@ export class UpdateUserDto {
   @IsOptional()
   @IsArray()
   roles?: Rol[];
+
+  @ApiPropertyOptional({ type: () => [Permission] })
+  @IsOptional()
+  @IsArray()
+  permissions?: Permission[];
+
+  @ApiPropertyOptional({ type: () => [Module] })
+  @IsOptional()
+  @IsArray()
+  modules?: Module[];
 
   @ApiPropertyOptional({ example: ['tesoreria'] })
   @IsOptional()
