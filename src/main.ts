@@ -6,6 +6,7 @@ import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './core/filters/http-exception.filter';
 import { Logger } from 'nestjs-pino';
+import helmet from 'helmet';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 
@@ -42,19 +43,61 @@ export async function bootstrap() {
   // Prefijo global para API REST
   app.setGlobalPrefix('api');
 
-  // Configuración de CORS
-  const corsOrigin = configService.get<string>('CORS_ORIGIN', '*');
-  const corsOrigins =
-    corsOrigin === '*'
-      ? corsOrigin
-      : corsOrigin
-          .split(',')
-          .map((o) => o.trim())
-          .filter((o) => o !== '');
+  // Cabeceras de seguridad. CSP relajada lo justo para Swagger UI (inline).
+  app.use(
+    helmet({
+      crossOriginEmbedderPolicy: false,
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'validator.swagger.io'],
+          fontSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
+    }),
+  );
+
+  // CORS: allowlist reutilizando SSO_ALLOWED_ORIGINS (hostnames). Los endpoints
+  // de documentación son públicos (no dependen de CORS para abrirse).
+  const allowedOrigins = (
+    configService.get<string>('SSO_ALLOWED_ORIGINS') ?? ''
+  )
+    .split(',')
+    .map((domain) => domain.trim())
+    .filter((domain) => domain !== '');
+
   app.enableCors({
-    origin: corsOrigins,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-idempotency-key'],
+    origin: (origin, callback) => {
+      // Sin Origin (curl, server-to-server, same-origin) → permitir.
+      if (!origin) return callback(null, true);
+      try {
+        const hostname = new URL(origin).hostname;
+        const allowed = allowedOrigins.some(
+          (domain) =>
+            hostname === domain || hostname.endsWith('.' + domain),
+        );
+        return callback(null, allowed);
+      } catch {
+        return callback(null, false);
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-idempotency-key',
+      'x-request-id',
+      'x-service-key',
+      'x-company-id',
+      'x-tenant-id',
+      'x-user-id',
+    ],
     credentials: false,
   });
 
@@ -89,14 +132,21 @@ La documentación Swagger incluye:
 - La descripción y ejemplos completos para todos los endpoints REST.  
 - Documentación especial (a través de endpoints de solo lectura) que describe los patrones y payloads TCP disponibles para microservicios, como referencia para desarrolladores e integradores.
 
+**Documentación informativa (no funcional):**
+- \`GET /api/tcp-docs\` (o \`/api/tcp-docs/message-patterns\`) → catálogo completo de comandos TCP.
+- \`GET /api/rest-docs\` (o \`/api/rest-docs/endpoints\`) → catálogo de endpoints REST de la aplicación.
+
 **Autenticación:**
 
 1. **JWT de usuario (REST):** Header \`Authorization: Bearer <access_token>\`. El token contiene SOLO identidad
-   (\`_id\`, \`name\`, \`email\`, \`company\`, \`tenantId\`, \`isSuperAdmin\`). El árbol de autorización
-   (modules/roles/permissions) se obtiene vía \`GET /api/users/profile\`.
+   (\`_id\`, \`name\`, \`email\`, \`company\`, \`tenantId\`, \`isSuperAdmin\`) y un \`sid\` (id de sesión).
+   El árbol de autorización (modules/roles/permissions) se obtiene vía \`GET /api/users/profile\`.
+   **Un token sin \`sid\` o con la sesión revocada se rechaza (401).**
 2. **Clave de servicio (REST opt-in):** header \`x-service-key\` (valor de \`SERVICE_API_KEY\`) en rutas como
    \`profile\` y \`findByTenant\` (más \`x-company-id\`/\`x-tenant-id\`/\`x-user-id\` según la ruta).
 3. **Microservicios TCP:** todos los \`@MessagePattern\` exigen \`serviceKey\` en el payload.
+   \`validateUser\` y \`validateSession\` validan la sesión (revocación inmediata); una sesión revocada
+   devuelve 401 (o \`{ active: false }\` en \`validateSession\`).
 
 Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo mejor de los APIs REST para consumo público y microservicios TCP para comunicación interna.`,
     )

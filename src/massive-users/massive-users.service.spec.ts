@@ -4,6 +4,7 @@ import { BadRequestException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 
 import { MassiveUsersService } from './massive-users.service';
+import { UserLimitsService } from 'src/users/user-limits.service';
 import { MailService } from 'src/mail/mail.service';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 
@@ -50,7 +51,11 @@ describe('MassiveUsersService', () => {
   let userModel: any;
   let companyModel: any;
   let mailService: { sendEmail: jest.Mock };
-  let tenantConfigServiceMock: { getPolicyValue: jest.Mock };
+  let tenantConfigServiceMock: {
+    getPolicyValue: jest.Mock;
+    getConfiguredValue: jest.Mock;
+    ensureRoleLimitPolicy: jest.Mock;
+  };
 
   let existingEmails: Set<string>;
   let existingPhones: Set<string>;
@@ -143,11 +148,16 @@ describe('MassiveUsersService', () => {
     mailService = { sendEmail: jest.fn().mockResolvedValue(undefined) };
     tenantConfigServiceMock = {
       getPolicyValue: jest.fn().mockResolvedValue(0),
+      getConfiguredValue: jest
+        .fn()
+        .mockResolvedValue({ isSet: false, value: undefined }),
+      ensureRoleLimitPolicy: jest.fn().mockResolvedValue(false),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MassiveUsersService,
+        UserLimitsService,
         { provide: getModelToken('User'), useValue: userModel },
         { provide: getModelToken('Rol'), useValue: rolModel },
         { provide: getModelToken('Permission'), useValue: permissionModel },
@@ -249,7 +259,7 @@ describe('MassiveUsersService', () => {
     expect(created.company).toBe('BPONET');
     expect(created.tenantId).toBe('000000');
     expect(created.password).toBeTruthy();
-    expect(mailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(mailService.sendEmail).toHaveBeenCalledTimes(2);
   });
 
   it('ignora columnas Admin/SuperAdmin del archivo (siempre false)', async () => {

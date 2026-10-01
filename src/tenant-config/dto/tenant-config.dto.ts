@@ -34,7 +34,7 @@ export class UpsertTenantConfigDto {
 
 export class PatchTenantConfigValuesDto {
   @ApiProperty({
-    example: { 'features.pbx': true, 'limits.maxAgents': 100 },
+    example: { 'features.pbx': true, 'limits.roles.AGE': 100 },
     description: 'Mapa parcial de políticas a actualizar',
   })
   @IsObject()

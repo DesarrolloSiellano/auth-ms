@@ -8,7 +8,6 @@ import {
   Delete,
   UseGuards,
   Req,
-  UnauthorizedException,
   ForbiddenException,
   Query,
 } from '@nestjs/common';
@@ -27,7 +26,6 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { UserPayload } from 'src/core/interfaces/user-payload.interface';
 import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 
 @ApiTags('modules')
@@ -44,6 +42,13 @@ export class ModulesController {
       throw new ForbiddenException(
         'Solo un SuperAdmin puede gestionar módulos',
       );
+    }
+  }
+
+  /** Lectura del catálogo: admin de empresa o SuperAdmin. */
+  private assertAdmin(req: any): void {
+    if (!req?.user?.isAdmin && !req?.user?.isSuperAdmin) {
+      throw new ForbiddenException('Se requieren permisos de administrador');
     }
   }
 
@@ -93,10 +98,7 @@ export class ModulesController {
     },
   })
   findAll(@Req() req: any) {
-    const user = req.user as UserPayload;
-    if (!user.isAdmin) {
-      throw new UnauthorizedException('User is not admin');
-    }
+    this.assertAdmin(req);
     return this.modulesService.findAll();
   }
 
@@ -121,7 +123,9 @@ export class ModulesController {
     @Query('from') from?: number,
     @Query('limit') limit?: number,
     @Query('global') global?: string,
+    @Req() req?: any,
   ) {
+    this.assertAdmin(req);
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limiteNumber = limit !== undefined ? Number(limit) : 10;
     return this.modulesService.findByPage(fromNumber, limiteNumber, global);
@@ -150,7 +154,8 @@ export class ModulesController {
     description: 'Módulo no encontrado',
   })
   @UseGuards(ValidateObjectIdGuard)
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id') id: string, @Req() req: any) {
+    this.assertAdmin(req);
     return this.modulesService.findOne(id);
   }
 
@@ -252,152 +257,5 @@ export class ModulesController {
   msRemove(@Payload() payload: any) {
     const id = payload?.id ?? payload;
     return this.modulesService.remove(id);
-  }
-
-  @Post('tcp-docs/message-patterns')
-  @ApiOperation({
-    summary: '[SOLO DOCUMENTACIÓN] Patrones TCP soportados por ModulesService',
-    description: `
-Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
-**No enviar datos reales aquí; la comunicación real es por sockets TCP.**
-
-**Autenticación entre servicios (obligatoria):** todo payload TCP debe incluir
-\`serviceKey\` con el valor de \`SERVICE_API_KEY\`. Los handlers que antes recibían
-una primitiva (\`id\`) ahora reciben \`{ serviceKey, id }\`.
-
-Ejemplos de uso del decorador @MessagePattern en NestJS:
-\`@MessagePattern({ cmd: 'createModule' })\`
-  `,
-  })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Documentación de patrones TCP disponible en este microservicio',
-    schema: {
-      example: {
-        message: 'Comandos TCP disponibles en modules',
-        patterns: [
-          {
-            command: 'createModule',
-            description:
-              'Crea un módulo. Payload: CreateModuleDto. Devuelve objeto de creación.',
-            payloadExample: {
-              name: 'Módulo ejemplo',
-              description: 'Módulo para pruebas',
-              created: '2025-08-06T12:00:00Z',
-              modified: '2025-08-06T12:00:00Z',
-              isActive: true,
-              isSystemModule: false,
-            },
-            responseExample: {
-              message: 'Module created successfully',
-              statusCode: 201,
-              status: 'Success',
-              data: {
-                /* objeto módulo creado */
-              },
-              meta: { totalData: 1, createdAt: '2025-08-06T12:00:00Z' },
-            },
-          },
-          {
-            command: 'findAllModules',
-            description: 'Trae todos los módulos. Payload: ninguno.',
-            responseExample: {
-              message: 'find all modules',
-              statusCode: 200,
-              status: 'Success',
-              data: [
-                /* array de módulos */
-              ],
-              meta: { totalData: 3 },
-            },
-          },
-          {
-            command: 'findOneModule',
-            description: 'Busca un módulo por ID. Payload: id:string.',
-            payloadExample: { id: 'id-modulo' },
-          },
-          {
-            command: 'updateModule',
-            description:
-              'Actualiza un módulo. Payload: { id: string, updateModuleDto: UpdateModuleDto }.',
-            payloadExample: {
-              id: 'id-modulo',
-              updateModuleDto: {
-                /* campos UpdateModuleDto */
-              },
-            },
-          },
-          {
-            command: 'removeModule',
-            description: 'Elimina un módulo por ID. Payload: id:string.',
-            payloadExample: { id: 'id-modulo' },
-          },
-        ],
-      },
-    },
-  })
-  tcpPatternsDoc() {
-    return {
-      message: 'Comandos TCP disponibles en modules',
-      patterns: [
-        {
-          command: 'createModule',
-          description:
-            'Crea un módulo. Payload: CreateModuleDto. Devuelve objeto de creación.',
-          payloadExample: {
-            name: 'Módulo ejemplo',
-            description: 'Módulo para pruebas',
-            created: '2025-08-06T12:00:00Z',
-            modified: '2025-08-06T12:00:00Z',
-            isActive: true,
-            isSystemModule: false,
-          },
-          responseExample: {
-            message: 'Module created successfully',
-            statusCode: 201,
-            status: 'Success',
-            data: {
-              /* ...estructura del módulo creado... */
-            },
-            meta: { totalData: 1, createdAt: '2025-08-06T12:00:00Z' },
-          },
-        },
-        {
-          command: 'findAllModules',
-          description: 'Trae todos los módulos. Payload: ninguno.',
-          responseExample: {
-            message: 'find all modules',
-            statusCode: 200,
-            status: 'Success',
-            data: [
-              /* ...array de módulos... */
-            ],
-            meta: { totalData: 3 },
-          },
-        },
-        {
-          command: 'findOneModule',
-          description: 'Busca un módulo por ID. Payload: id:string.',
-          payloadExample: { id: 'id-modulo' },
-        },
-        {
-          command: 'updateModule',
-          description:
-            'Actualiza un módulo. Payload: { id: string, updateModuleDto: UpdateModuleDto }.',
-          payloadExample: {
-            id: 'id-modulo',
-            updateModuleDto: {
-              /* ...campos de actualización... */
-            },
-          },
-        },
-        {
-          command: 'removeModule',
-          description: 'Elimina un módulo por ID. Payload: id:string.',
-          payloadExample: { id: 'id-modulo' },
-        },
-      ],
-    };
   }
 }

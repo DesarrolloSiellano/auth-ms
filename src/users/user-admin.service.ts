@@ -13,11 +13,14 @@ import * as generatePassword from 'generate-password';
 import { User } from './entities/user.entity';
 import { SavedFilter } from './entities/saved-filter.entity';
 import { CustomFieldDefinition } from './entities/custom-field-definition.entity';
+import { UserLimitsService } from './user-limits.service';
 import { toPublicUser } from './helpers/user.sanitizer';
 import { MailService } from 'src/mail/mail.service';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+import { FeaturePolicyService } from 'src/core/services/feature-policy.service';
 import { SessionsService } from 'src/sessions/sessions.service';
 import { AuditService } from 'src/audit/audit.service';
+import { DEFAULT_FRONT_URL } from 'src/core/helpers/app-url.helper';
 import type { Response } from 'express';
 import { streamCsv } from 'src/reports/helpers/csv.helper';
 import { streamStyledExcel } from 'src/reports/helpers/styled-excel.helper';
@@ -62,6 +65,8 @@ export class UserAdminService {
     @InjectModel('Module') private readonly moduleModel: Model<any>,
     private readonly mailService: MailService,
     private readonly tenantConfigService: TenantConfigService,
+    private readonly featurePolicy: FeaturePolicyService,
+    private readonly userLimitsService: UserLimitsService,
     private readonly sessionsService: SessionsService,
     private readonly auditService: AuditService,
   ) {}
@@ -144,17 +149,18 @@ export class UserAdminService {
   }
 
   private frontUrl(redirectUri?: string): string {
-    return (
-      redirectUri || process.env.APP_URL || 'https://app.bponet.com.co'
-    );
+    if (!redirectUri || redirectUri === 'null' || redirectUri === 'undefined') {
+      return DEFAULT_FRONT_URL;
+    }
+    return redirectUri;
   }
 
   // --------------------------------------------------------------- Búsqueda
 
-  private buildSearchQuery(
+  private async buildSearchQuery(
     requester: any,
     filters: any = {},
-  ): Record<string, any> {
+  ): Promise<Record<string, any>> {
     const query: any = { deletedAt: null };
     if (!requester?.isSuperAdmin) {
       query.company = requester?.company;
@@ -180,18 +186,32 @@ export class UserAdminService {
     if (filters.username) query.username = new RegExp(filters.username, 'i');
     if (filters.phone) query.phone = new RegExp(filters.phone, 'i');
     if (filters.tags) {
-      const list = String(filters.tags)
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
-      if (list.length) query.tags = { $in: list };
+      const tagsEnabled = await this.featurePolicy.isEnabled(
+        requester?.tenantId,
+        requester?.company,
+        'features.userTags',
+      );
+      if (tagsEnabled) {
+        const list = String(filters.tags)
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+        if (list.length) query.tags = { $in: list };
+      }
     }
     if (filters.groups) {
-      const list = String(filters.groups)
-        .split(',')
-        .map((g) => g.trim())
-        .filter(Boolean);
-      if (list.length) query.groups = { $in: list };
+      const groupsEnabled = await this.featurePolicy.isEnabled(
+        requester?.tenantId,
+        requester?.company,
+        'features.userGroups',
+      );
+      if (groupsEnabled) {
+        const list = String(filters.groups)
+          .split(',')
+          .map((g) => g.trim())
+          .filter(Boolean);
+        if (list.length) query.groups = { $in: list };
+      }
     }
     if (filters.desde || filters.hasta) {
       const range: any = {};
@@ -221,7 +241,7 @@ export class UserAdminService {
     columns: ReportColumn[];
     rows: Record<string, any>[];
   }> {
-    const query = this.buildSearchQuery(requester, filters);
+    const query = await this.buildSearchQuery(requester, filters);
     const users = await this.userModel
       .find(query)
       .sort({ created: -1 })
@@ -455,8 +475,24 @@ export class UserAdminService {
     this.assertCanManageTarget(target, requester);
 
     const update: any = {};
-    if (Array.isArray(data.tags)) update.tags = data.tags;
-    if (Array.isArray(data.groups)) update.groups = data.groups;
+    if (Array.isArray(data.tags)) {
+      await this.featurePolicy.assertEnabled(
+        requester?.tenantId,
+        requester?.company,
+        'features.userTags',
+        'La función de etiquetas de usuario no está habilitada para la empresa',
+      );
+      update.tags = data.tags;
+    }
+    if (Array.isArray(data.groups)) {
+      await this.featurePolicy.assertEnabled(
+        requester?.tenantId,
+        requester?.company,
+        'features.userGroups',
+        'La función de grupos de usuario no está habilitada para la empresa',
+      );
+      update.groups = data.groups;
+    }
 
     await this.userModel
       .updateOne({ _id: id }, { $set: update })
@@ -584,16 +620,29 @@ export class UserAdminService {
 
     if (action === 'revokeSessions') {
       let revoked = 0;
+      let skipped = 0;
       for (const id of valid) {
-        revoked += await this.sessionsService.revokeByUser(
-          id,
-          requester?.isSuperAdmin ? undefined : requester?.company,
-        );
+        try {
+          revoked += await this.sessionsService.revokeByUser(
+            id,
+            requester?.isSuperAdmin ? undefined : requester?.company,
+          );
+        } catch (error) {
+          if (error instanceof ForbiddenException) {
+            skipped += 1;
+            continue;
+          }
+          throw error;
+        }
       }
-      this.audit(requester, 'user.bulk.revokeSessions', { ids: valid, revoked });
+      this.audit(requester, 'user.bulk.revokeSessions', {
+        ids: valid,
+        revoked,
+        skipped,
+      });
       return {
         message: 'Sesiones revocadas',
-        data: { action, revoked },
+        data: { action, revoked, skipped },
         meta: { totalData: revoked },
       };
     }
@@ -621,6 +670,59 @@ export class UserAdminService {
               isSystemModule: false,
               routes: [],
             }));
+
+      // Alta de roles: valida la demanda neta por empresa contra los topes.
+      if (field === 'roles') {
+        const newSet = new Set(
+          resolved
+            .map((r: any) => String(r.codeRol || '').toUpperCase())
+            .filter((code: string) => !!code),
+        );
+        const currentUsers: any[] = await this.userModel
+          .find(query)
+          .select('company tenantId roles')
+          .lean()
+          .setOptions({ bypassTenant: true })
+          .exec();
+
+        const perCompany = new Map<
+          string,
+          { tenantId?: string; demands: Record<string, number> }
+        >();
+        for (const current of currentUsers || []) {
+          const comp = current?.company;
+          if (!comp) continue;
+          const entry =
+            perCompany.get(comp) ||
+            ({ tenantId: current?.tenantId, demands: {} } as {
+              tenantId?: string;
+              demands: Record<string, number>;
+            });
+          const oldSet = new Set(
+            this.userLimitsService
+              .extractRoleCodes(current?.roles)
+              .map((code) => code.toUpperCase()),
+          );
+          for (const code of newSet) {
+            if (!oldSet.has(code)) {
+              entry.demands[code] = (entry.demands[code] || 0) + 1;
+            }
+          }
+          perCompany.set(comp, entry);
+        }
+
+        for (const [comp, entry] of perCompany) {
+          await this.userLimitsService.assertWithinLimits({
+            company: comp,
+            tenantId: entry.tenantId,
+            additionalUsers: 0,
+            roleDemands: entry.demands,
+          });
+        }
+        for (const code of newSet) {
+          await this.tenantConfigService.ensureRoleLimitPolicy(code);
+        }
+      }
 
       const res = await this.userModel
         .updateMany(query, { $set: { [field]: resolved } })
@@ -685,7 +787,7 @@ export class UserAdminService {
 
   // ------------------------------------------------------- Reenviar correo
 
-  async resendInvite(id: string, requester: any) {
+  async resendInvite(id: string, requester: any, baseUrl?: string) {
     this.assertStaff(requester);
     const user = this.assertCanManageTarget(
       await this.userModel.findOne(this.scope(requester, { _id: id })).exec(),
@@ -697,7 +799,13 @@ export class UserAdminService {
       user.passwordResetExpires &&
       new Date(user.passwordResetExpires).getTime() > Date.now();
 
-    if (hasValidToken) {
+    const invitationsEnabled = await this.featurePolicy.isEnabled(
+      user.tenantId,
+      user.company,
+      'features.invitations',
+    );
+
+    if (hasValidToken && invitationsEnabled) {
       const t = this.token();
       user.passwordResetToken = t.hash;
       user.passwordResetExpires = t.expires;
@@ -707,12 +815,14 @@ export class UserAdminService {
           to: user.email,
           subject: 'Invitación a BpoNet',
           template: 'welcome',
+          tenantId: user.tenantId,
+          company: user.company,
           context: {
             name: user.name,
             platform_name: 'BpoNet',
             username: user.username || user.email,
             password: '(usa el enlace de invitación)',
-            login_url: `${this.frontUrl()}/set-password?token=${t.raw}`,
+            login_url: `${this.frontUrl(baseUrl)}/set-password?token=${t.raw}`,
           },
         })
         .catch(() => undefined);
@@ -730,12 +840,14 @@ export class UserAdminService {
         to: user.email,
         subject: 'Bienvenido a BpoNet - Activa tu cuenta',
         template: 'welcome',
+        tenantId: user.tenantId,
+        company: user.company,
         context: {
           name: user.name,
           platform_name: 'BpoNet',
           username: user.username || user.email,
           password: temp,
-          login_url: this.frontUrl(),
+          login_url: this.frontUrl(baseUrl),
         },
       })
       .catch(() => undefined);
@@ -811,6 +923,20 @@ export class UserAdminService {
     const data = input && typeof input === 'object' ? input : {};
     if (!company) return data;
 
+    const enabled = await this.featurePolicy.isEnabled(
+      _tenantId,
+      company,
+      'features.customFields',
+    );
+    if (!enabled) {
+      if (Object.keys(data).length > 0) {
+        throw new ForbiddenException(
+          'La función de campos personalizados no está habilitada para la empresa',
+        );
+      }
+      return {};
+    }
+
     const defs = await this.customFieldModel
       .find({ company, isActive: true })
       .setOptions({ bypassTenant: true })
@@ -873,6 +999,14 @@ export class UserAdminService {
     const targetCompany = requester?.isSuperAdmin
       ? company || requester?.company
       : requester?.company;
+    const enabled = await this.featurePolicy.isEnabled(
+      requester?.tenantId,
+      targetCompany,
+      'features.customFields',
+    );
+    if (!enabled) {
+      return { message: 'Campos personalizados', data: [], meta: { totalData: 0 } };
+    }
     const query: any = { isActive: true };
     if (targetCompany) query.company = targetCompany;
     const data = await this.customFieldModel
@@ -888,6 +1022,12 @@ export class UserAdminService {
     if (!requester?.isSuperAdmin) {
       throw new ForbiddenException('Solo un SuperAdmin puede definir campos');
     }
+    await this.featurePolicy.assertEnabled(
+      requester?.tenantId,
+      dto?.company || requester?.company,
+      'features.customFields',
+      'La función de campos personalizados no está habilitada para la empresa',
+    );
     if (!dto?.key || !dto?.label) {
       throw new BadRequestException('key y label son obligatorios');
     }
@@ -906,6 +1046,12 @@ export class UserAdminService {
     if (!requester?.isSuperAdmin) {
       throw new ForbiddenException('Solo un SuperAdmin puede definir campos');
     }
+    await this.featurePolicy.assertEnabled(
+      requester?.tenantId,
+      dto?.company || requester?.company,
+      'features.customFields',
+      'La función de campos personalizados no está habilitada para la empresa',
+    );
     const updated = await this.customFieldModel
       .findByIdAndUpdate(id, { $set: dto }, { new: true })
       .setOptions({ bypassTenant: true })
@@ -920,6 +1066,12 @@ export class UserAdminService {
     if (!requester?.isSuperAdmin) {
       throw new ForbiddenException('Solo un SuperAdmin puede definir campos');
     }
+    await this.featurePolicy.assertEnabled(
+      requester?.tenantId,
+      requester?.company,
+      'features.customFields',
+      'La función de campos personalizados no está habilitada para la empresa',
+    );
     const deleted = await this.customFieldModel
       .findByIdAndDelete(id)
       .setOptions({ bypassTenant: true })

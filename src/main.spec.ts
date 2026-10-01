@@ -8,6 +8,7 @@ const loggerMock = { log: jest.fn(), error: jest.fn(), warn: jest.fn() };
 
 const mockApp = {
   useLogger: jest.fn(),
+  use: jest.fn(),
   get: jest.fn((token: any) =>
     token === ConfigService ? configMock : loggerMock,
   ),
@@ -101,6 +102,7 @@ describe('bootstrap', () => {
           }),
         }),
       }),
+      expect.anything(),
     );
   });
 

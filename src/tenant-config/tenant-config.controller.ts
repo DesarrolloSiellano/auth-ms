@@ -23,6 +23,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
+import { ParamFormat } from 'src/core/decorators/param-format.decorator';
 import { ServiceOrJwtGuard } from 'src/core/guards/service-or-jwt.guard';
 import { AuditService } from 'src/audit/audit.service';
 import { TenantConfigService } from './tenant-config.service';
@@ -97,6 +98,7 @@ export class TenantConfigController {
   }
 
   @Put('policy-definitions/:key')
+  @ParamFormat({ param: 'key', kind: 'token' })
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Actualiza una definición de política (SuperAdmin)' })
   async updateDefinition(
@@ -114,6 +116,7 @@ export class TenantConfigController {
   }
 
   @Delete('policy-definitions/:key')
+  @ParamFormat({ param: 'key', kind: 'token' })
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Elimina una definición de política (SuperAdmin)' })
   async removeDefinition(@Param('key') key: string, @Req() req: any) {
@@ -157,6 +160,7 @@ export class TenantConfigController {
   }
 
   @Get('config/:tenantId')
+  @ParamFormat({ param: 'tenantId', kind: 'token' })
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Obtiene la configuración de un tenant (SuperAdmin)' })
   getConfigByTenant(@Param('tenantId') tenantId: string, @Req() req: any) {
@@ -165,6 +169,7 @@ export class TenantConfigController {
   }
 
   @Put('config/:tenantId')
+  @ParamFormat({ param: 'tenantId', kind: 'token' })
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Crea/actualiza la configuración de un tenant (SuperAdmin)' })
   async upsertConfig(
@@ -188,6 +193,7 @@ export class TenantConfigController {
   }
 
   @Patch('config/:tenantId/values')
+  @ParamFormat({ param: 'tenantId', kind: 'token' })
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Actualiza valores de políticas (SuperAdmin)' })
   async patchValues(
@@ -240,6 +246,7 @@ export class TenantConfigController {
   }
 
   @Get('usage/:tenantId')
+  @ParamFormat({ param: 'tenantId', kind: 'token' })
   @UseGuards(ServiceOrJwtGuard)
   @ApiOperation({ summary: 'Obtiene el consumo de un tenant' })
   @ApiQuery({ name: 'period', required: false, type: String })

@@ -12,11 +12,16 @@ export interface Session extends Document {
   idUser: string;
   email: string;
   company: string;
+  /** Denormalizado para que un admin no-super no revoque sesiones de un SuperAdmin. */
+  isSuperAdmin?: boolean;
   expires: string;
   created: string;
   modified: string;
   isActive: boolean;
   refreshToken?: string;
+  /** Hashes de refresh tokens ya rotados (para detección de reuso). */
+  usedRefreshTokens?: string[];
+  refreshRotatedAt?: Date;
   lastActivityAt?: Date;
   ip?: string;
   os?: string;
@@ -40,11 +45,14 @@ export const SessionSchema = new Schema({
   idUser: { type: String },
   email: { type: String },
   ...TenantBaseSchema,
+  isSuperAdmin: { type: Boolean, default: false },
   expires: { type: String },
   created: { type: String, default: moment().format('YYYY-MM-DD HH:mm:ss') },
   modified: { type: String, default: moment().format('YYYY-MM-DD HH:mm:ss') },
   isActive: { type: Boolean, default: true },
   refreshToken: { type: String },
+  usedRefreshTokens: { type: [String], default: [] },
+  refreshRotatedAt: { type: Date },
   lastActivityAt: { type: Date, default: Date.now },
   ip: { type: String },
   os: { type: String },

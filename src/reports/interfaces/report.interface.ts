@@ -81,6 +81,7 @@ export interface ReportDeps {
   companyModel: any;
   tenantConfigService: any;
   auditService: any;
+  localeService?: any;
 }
 
 export interface ReportDefinition {

@@ -27,6 +27,9 @@ export interface User extends Document {
   isAdmin: boolean;
   isNewUser: boolean;
   isSuperAdmin: boolean;
+  isTrial?: boolean;
+  trialStartedAt?: Date;
+  trialEndsAt?: Date | null;
   mustChangePassword?: boolean;
   isBlocked?: boolean;
   blockReason?: string;
@@ -40,6 +43,9 @@ export interface User extends Document {
   invitedAt?: Date;
   passwordResetToken?: string;
   passwordResetExpires?: Date;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
+  emailVerifiedAt?: Date;
   modules: Module[];
   roles: Rol[];
   permissions: Permission[];
@@ -142,6 +148,9 @@ export const UserSchema = new Schema({
   isActived: { type: Boolean, default: true },
   isAdmin: { type: Boolean, default: false }, // Assuming Role is a separate entity
   isSuperAdmin: { type: Boolean, default: false }, // Assuming Role is a separate entity
+  isTrial: { type: Boolean, default: false },
+  trialStartedAt: { type: Date },
+  trialEndsAt: { type: Date, default: null },
   isNewUser: { type: Boolean, default: true },
   mustChangePassword: { type: Boolean, default: false },
   isBlocked: { type: Boolean, default: false },
@@ -157,6 +166,9 @@ export const UserSchema = new Schema({
 
   passwordResetToken: { type: String, required: false },
   passwordResetExpires: { type: Date, required: false },
+  emailVerificationToken: { type: String, required: false },
+  emailVerificationExpires: { type: Date, required: false },
+  emailVerifiedAt: { type: Date, required: false },
 
   createdDate: { type: Date, default: moment().format('YYYY-MM-DD') },
   createdHour: { type: String, default: moment().format('HH:mm:ss') },

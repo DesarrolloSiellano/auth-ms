@@ -1,7 +1,14 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  OnModuleDestroy,
+  Optional,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
 import { Session } from './entities/session.entity';
+import { User } from 'src/users/entities/user.entity';
 
 interface SessionCacheEntry {
   active: boolean;
@@ -10,24 +17,44 @@ interface SessionCacheEntry {
 
 @Injectable()
 export class SessionsService implements OnModuleDestroy {
-  private readonly CACHE_TTL_MS = 30_000;
+  /** 0 = sin caché (revocación inmediata entre instancias). */
+  private readonly CACHE_TTL_MS: number;
   /** Límite duro de entradas para evitar crecimiento sin control. */
   private readonly CACHE_MAX = 10_000;
   private readonly activeCache = new Map<string, SessionCacheEntry>();
-  private readonly sweeper: ReturnType<typeof setInterval>;
+  private readonly sweeper?: ReturnType<typeof setInterval>;
 
   constructor(
     @InjectModel('Session') private readonly sessionModel: Model<Session>,
+    @Optional()
+    @InjectModel('User')
+    private readonly userModel?: Model<User>,
+    @Optional() private readonly configService?: ConfigService,
   ) {
+    const ttl = Number(
+      this.configService?.get<string>('SESSION_CACHE_TTL_MS', '30000'),
+    );
+    this.CACHE_TTL_MS = Number.isFinite(ttl) && ttl >= 0 ? ttl : 30_000;
+
     // Purga periódica de entradas expiradas. `unref()` evita que el timer
-    // mantenga vivo el proceso (y no bloquea tests).
-    this.sweeper = setInterval(() => this.purgeExpired(), this.CACHE_TTL_MS);
-    this.sweeper.unref?.();
+    // mantenga vivo el proceso (y no bloquea tests). Con TTL 0 no hay caché.
+    if (this.CACHE_TTL_MS > 0) {
+      this.sweeper = setInterval(() => this.purgeExpired(), this.CACHE_TTL_MS);
+      this.sweeper.unref?.();
+    }
   }
 
   onModuleDestroy(): void {
-    clearInterval(this.sweeper);
+    if (this.sweeper) clearInterval(this.sweeper);
     this.activeCache.clear();
+  }
+
+  /**
+   * Filtro de alcance: un admin no-super (scoped por empresa) no puede ver ni
+   * revocar sesiones de SuperAdmins.
+   */
+  private scopeFilter(company?: string): Record<string, any> {
+    return company ? { company, isSuperAdmin: { $ne: true } } : {};
   }
 
   private purgeExpired(): void {
@@ -61,6 +88,44 @@ export class SessionsService implements OnModuleDestroy {
       .exec();
   }
 
+  /** Busca una sesión activa por su id (usado en la rotación de refresh). */
+  async findActiveById(sessionId: string): Promise<Session | null> {
+    if (!sessionId || !Types.ObjectId.isValid(sessionId)) return null;
+    return this.sessionModel
+      .findOne({ _id: sessionId, isActive: true })
+      .setOptions({ bypassTenant: true })
+      .lean()
+      .exec();
+  }
+
+  /**
+   * Rota el refresh token de una sesión: guarda el hash nuevo, archiva el
+   * anterior (para detección de reuso) y registra la actividad.
+   */
+  async rotateRefreshToken(
+    sessionId: string,
+    newHash: string,
+    usedHash: string,
+  ): Promise<void> {
+    if (!sessionId || !Types.ObjectId.isValid(sessionId)) return;
+    await this.sessionModel
+      .updateOne(
+        { _id: sessionId, isActive: true },
+        {
+          $set: {
+            refreshToken: newHash,
+            refreshRotatedAt: new Date(),
+            lastActivityAt: new Date(),
+          },
+          $push: {
+            usedRefreshTokens: { $each: [usedHash], $slice: -5 },
+          },
+        },
+      )
+      .setOptions({ bypassTenant: true })
+      .exec();
+  }
+
   async deactivateByRefreshHash(hash: string): Promise<void> {
     const session = await this.sessionModel
       .findOne({ refreshToken: hash, isActive: true })
@@ -90,9 +155,11 @@ export class SessionsService implements OnModuleDestroy {
   async isSessionActive(sessionId?: string): Promise<boolean> {
     if (!sessionId || !Types.ObjectId.isValid(sessionId)) return false;
 
-    const cached = this.activeCache.get(sessionId);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.active;
+    if (this.CACHE_TTL_MS > 0) {
+      const cached = this.activeCache.get(sessionId);
+      if (cached && cached.expiresAt > Date.now()) {
+        return cached.active;
+      }
     }
 
     const session = await this.sessionModel
@@ -103,11 +170,13 @@ export class SessionsService implements OnModuleDestroy {
       .exec();
 
     const active = !!session;
-    this.activeCache.set(sessionId, {
-      active,
-      expiresAt: Date.now() + this.CACHE_TTL_MS,
-    });
-    this.evictIfNeeded();
+    if (this.CACHE_TTL_MS > 0) {
+      this.activeCache.set(sessionId, {
+        active,
+        expiresAt: Date.now() + this.CACHE_TTL_MS,
+      });
+      this.evictIfNeeded();
+    }
     return active;
   }
 
@@ -124,8 +193,7 @@ export class SessionsService implements OnModuleDestroy {
     from?: number;
     limit?: number;
   }) {
-    const query: any = { isActive: true };
-    if (params.company) query.company = params.company;
+    const query: any = { isActive: true, ...this.scopeFilter(params.company) };
     if (params.userId) query.user = params.userId;
     if (params.email) {
       query.email = new RegExp(params.email, 'i');
@@ -218,8 +286,7 @@ export class SessionsService implements OnModuleDestroy {
   // ------------------------------------------------------------- Revocación
 
   async revokeById(id: string, company?: string) {
-    const query: any = { _id: id, isActive: true };
-    if (company) query.company = company;
+    const query: any = { _id: id, isActive: true, ...this.scopeFilter(company) };
 
     const session = await this.sessionModel
       .findOneAndUpdate(query, { $set: { isActive: false } }, { new: true })
@@ -232,8 +299,26 @@ export class SessionsService implements OnModuleDestroy {
   }
 
   async revokeByUser(userId: string, company?: string): Promise<number> {
-    const query: any = { user: userId, isActive: true };
-    if (company) query.company = company;
+    // Un admin (alcance por empresa) no puede revocar sesiones de un
+    // SuperAdmin, aunque pertenezca a su misma empresa.
+    if (company && this.userModel) {
+      const target = await this.userModel
+        .findById(userId)
+        .select('isSuperAdmin')
+        .lean()
+        .exec();
+      if (target?.isSuperAdmin) {
+        throw new ForbiddenException(
+          'No puedes revocar sesiones de un SuperAdmin',
+        );
+      }
+    }
+
+    const query: any = {
+      user: userId,
+      isActive: true,
+      ...this.scopeFilter(company),
+    };
 
     const sessions = await this.sessionModel
       .find(query)
@@ -255,8 +340,8 @@ export class SessionsService implements OnModuleDestroy {
     const query: any = {
       _id: { $in: ids.filter((id) => Types.ObjectId.isValid(id)) },
       isActive: true,
+      ...this.scopeFilter(company),
     };
-    if (company) query.company = company;
 
     const sessions = await this.sessionModel
       .find(query)
@@ -275,8 +360,7 @@ export class SessionsService implements OnModuleDestroy {
   }
 
   async revokeAll(company?: string): Promise<number> {
-    const query: any = { isActive: true };
-    if (company) query.company = company;
+    const query: any = { isActive: true, ...this.scopeFilter(company) };
 
     const sessions = await this.sessionModel
       .find(query)

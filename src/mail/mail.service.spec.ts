@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MailService } from './mail.service';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
+import { FeaturePolicyService } from 'src/core/services/feature-policy.service';
 
 describe('MailService', () => {
   let service: MailService;
@@ -16,12 +17,20 @@ describe('MailService', () => {
     ),
   };
 
+  const featurePolicyMock = {
+    isEnabled: jest.fn().mockResolvedValue(true),
+    assertEnabled: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
+    jest.clearAllMocks();
+    featurePolicyMock.isEnabled.mockResolvedValue(true);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MailService,
         { provide: MailerService, useValue: mockMailerService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: FeaturePolicyService, useValue: featurePolicyMock },
       ],
     }).compile();
 
@@ -60,5 +69,49 @@ describe('MailService', () => {
         template: 'welcome',
       }),
     ).rejects.toThrow('SMTP down');
+  });
+
+  it('omite el envío si el canal email está deshabilitado', async () => {
+    featurePolicyMock.isEnabled.mockResolvedValue(false);
+
+    await service.sendEmail({
+      to: 'user@mail.com',
+      subject: 'Bienvenido',
+      template: 'welcome',
+      tenantId: 't1',
+      company: 'EmpresaX',
+    });
+
+    expect(mockMailerService.sendMail).not.toHaveBeenCalled();
+  });
+
+  it('envía recuperación aunque el canal email esté deshabilitado', async () => {
+    featurePolicyMock.isEnabled.mockResolvedValue(false);
+
+    await service.sendEmail({
+      to: 'user@mail.com',
+      subject: 'Recuperación',
+      template: 'recovery',
+      tenantId: 't1',
+      company: 'EmpresaX',
+    });
+
+    expect(mockMailerService.sendMail).toHaveBeenCalled();
+  });
+
+  it('omite notificaciones si features.notificaciones está deshabilitada', async () => {
+    featurePolicyMock.isEnabled.mockImplementation((_t, _c, key: string) =>
+      Promise.resolve(key !== 'features.notificaciones'),
+    );
+
+    await service.sendEmail({
+      to: 'user@mail.com',
+      subject: 'Bienvenido',
+      template: 'welcome',
+      tenantId: 't1',
+      company: 'EmpresaX',
+    });
+
+    expect(mockMailerService.sendMail).not.toHaveBeenCalled();
   });
 });

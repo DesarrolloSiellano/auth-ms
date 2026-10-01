@@ -20,9 +20,10 @@ describe('tenantPlugin', () => {
   it('registra hooks para todos los métodos de query y validate', () => {
     const preSpy = applyPlugin();
     const methods = [
-      'find', 'findOne', 'countDocuments', 'updateOne', 'updateMany',
+      'find', 'findOne', 'findById', 'countDocuments', 'updateOne', 'updateMany',
       'deleteOne', 'deleteMany', 'distinct', 'findOneAndUpdate',
-      'findOneAndDelete', 'findOneAndReplace', 'validate',
+      'findOneAndDelete', 'findOneAndReplace', 'findByIdAndUpdate',
+      'findByIdAndDelete', 'validate',
     ];
     for (const m of methods) {
       expect(preSpy).toHaveBeenCalledWith(m, expect.any(Function));
@@ -104,19 +105,42 @@ describe('tenantPlugin', () => {
       expect(next).toHaveBeenCalled();
     });
 
-    it('no sobrescribe company/tenantId ya definidos', () => {
+    it('FUERZA company/tenantId del contexto para un usuario de empresa', () => {
       const preSpy = applyPlugin();
       const hook = getHook(preSpy, 'validate');
       const next = jest.fn();
       const doc = {
         isNew: true,
-        get: jest.fn((field: string) => (field === 'company' ? 'YaDef' : undefined)),
+        get: jest.fn().mockReturnValue('OtraEmpresa'),
         set: jest.fn(),
       };
 
       tenantLocalStorage.run(store, () => {
         hook.call(doc, next);
       });
+
+      expect(doc.set).toHaveBeenCalledWith('company', 'EmpresaX');
+      expect(doc.set).toHaveBeenCalledWith('tenantId', 'T-001');
+    });
+
+    it('permite a un SuperAdmin especificar la empresa', () => {
+      const preSpy = applyPlugin();
+      const hook = getHook(preSpy, 'validate');
+      const next = jest.fn();
+      const doc = {
+        isNew: true,
+        get: jest.fn((field: string) =>
+          field === 'company' ? 'EmpresaDestino' : undefined,
+        ),
+        set: jest.fn(),
+      };
+
+      tenantLocalStorage.run(
+        { ...store, isSuperAdmin: true, companyId: 'EmpresaX' },
+        () => {
+          hook.call(doc, next);
+        },
+      );
 
       expect(doc.set).not.toHaveBeenCalledWith('company', 'EmpresaX');
       expect(doc.set).toHaveBeenCalledWith('tenantId', 'T-001');

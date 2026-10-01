@@ -17,6 +17,9 @@ import { SessionsModule } from 'src/sessions/sessions.module';
         secret: await configService.get('JWT_SECRET'),
         signOptions: {
           expiresIn: await configService.get('JWT_ACCESS_EXPIRATION', '1h'),
+          algorithm: 'HS256',
+          issuer: await configService.get('JWT_ISSUER', 'bponet-auth'),
+          audience: await configService.get('JWT_AUDIENCE', 'bponet-apps'),
         },
       }),
     }),

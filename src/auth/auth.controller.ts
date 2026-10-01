@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
+import { resolveRequestOrigin } from 'src/core/helpers/app-url.helper';
 import express from 'express';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { AuthService } from './auth.service';
@@ -165,8 +166,13 @@ export class AuthController {
   recoveryPassword(
     @Body() recoveryPassword: RecoveryPassword,
     @Query('redirectUri') redirectUri: string,
+    @Req() req?: any,
   ) {
-    return this.authService.recoveryPassword(recoveryPassword, redirectUri);
+    const requested =
+      redirectUri && redirectUri !== 'null' && redirectUri !== 'undefined'
+        ? redirectUri
+        : resolveRequestOrigin(req);
+    return this.authService.recoveryPassword(recoveryPassword, requested);
   }
 
   @Post('change-password')
@@ -295,6 +301,26 @@ export class AuthController {
     return this.authService.setPasswordWithToken(setPasswordDto);
   }
 
+  @Post('verify-email')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @ApiOperation({ summary: 'Verificar correo con token de un solo uso' })
+  @ApiResponse({ status: 200, description: 'Correo verificado' })
+  @ApiResponse({ status: 400, description: 'Token inválido o expirado' })
+  verifyEmail(@Body() body: { token: string }) {
+    return this.authService.verifyEmail(body?.token);
+  }
+
+  @Post('resend-verification')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reenviar correo de verificación' })
+  resendVerification(@Req() req: any) {
+    return this.authService.resendEmailVerification(
+      String(req.user._id),
+      resolveRequestOrigin(req),
+    );
+  }
+
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('refresh')
   @ApiOperation({
@@ -353,6 +379,26 @@ export class AuthController {
         valid: true,
       },
     };
+  }
+
+  /**
+   * Valida únicamente si el token/sesión sigue vigente (para apps externas
+   * que solo necesitan un booleano). Requiere `serviceKey`. A diferencia de
+   * `validateUser`, no lanza: devuelve `{ active }`.
+   */
+  @MessagePattern({ cmd: 'validateSession' })
+  async msValidateSession(@Payload() payload: any) {
+    const token = payload?.token ?? payload;
+    try {
+      const user = await this.jwtTCPStrategy.validate(token);
+      return { active: true, valid: true, userId: user?._id };
+    } catch (error: any) {
+      return {
+        active: false,
+        valid: false,
+        reason: error?.message || 'Sesión inválida',
+      };
+    }
   }
 
   @MessagePattern({ cmd: 'refresh' })

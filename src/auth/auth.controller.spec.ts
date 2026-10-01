@@ -178,6 +178,28 @@ describe('AuthController', () => {
       expect(jwtTCPMock.validate).toHaveBeenCalledWith('tok');
     });
 
+    it('msValidateSession devuelve active:true con token válido', async () => {
+      jwtTCPMock.validate.mockResolvedValue({ _id: 'u1' });
+
+      await expect(
+        controller.msValidateSession({ token: 'tok' }),
+      ).resolves.toEqual({ active: true, valid: true, userId: 'u1' });
+    });
+
+    it('msValidateSession devuelve active:false si la sesión es inválida/revocada', async () => {
+      jwtTCPMock.validate.mockRejectedValue(
+        new Error('Sesión revocada o expirada'),
+      );
+
+      await expect(
+        controller.msValidateSession({ token: 'tok' }),
+      ).resolves.toEqual({
+        active: false,
+        valid: false,
+        reason: 'Sesión revocada o expirada',
+      });
+    });
+
     it('msRefresh delega en el servicio', async () => {
       authServiceMock.refreshAccessToken.mockResolvedValue('r');
 

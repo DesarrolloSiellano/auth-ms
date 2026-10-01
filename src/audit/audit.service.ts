@@ -55,6 +55,28 @@ const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 const REPORT_EXPORT_MAX = 10000;
 
+/** Claves cuyo valor se redacta en `detail` para no filtrar secretos. */
+const SENSITIVE_AUDIT_KEYS = new Set<string>([
+  'password',
+  'currentpassword',
+  'newpassword',
+  'confirmpassword',
+  'token',
+  'tokens',
+  'refreshtoken',
+  'accesstoken',
+  'passwordresettoken',
+  'emailverificationtoken',
+  'secret',
+  'servicekey',
+  'authorization',
+  'apikey',
+]);
+
+const MAX_STRING_LEN = 512;
+const MAX_DEPTH = 5;
+const MAX_ARRAY_LEN = 50;
+
 @Injectable()
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
@@ -75,11 +97,37 @@ export class AuditService {
       await this.auditModel.create({
         ...entry,
         status: entry.status || 'success',
-        detail: entry.detail || {},
+        detail: this.sanitizeDetail(entry.detail || {}),
       });
     } catch (error: any) {
       this.logger.warn(`No se pudo registrar auditoría: ${error?.message}`);
     }
+  }
+
+  /** Redacta claves sensibles y trunca estructuras profundas/largas. */
+  private sanitizeDetail(value: any, depth = 0): any {
+    if (value === null || value === undefined) return value;
+    if (typeof value === 'string') {
+      return value.length > MAX_STRING_LEN
+        ? `${value.slice(0, MAX_STRING_LEN)}…`
+        : value;
+    }
+    if (typeof value !== 'object') return value;
+    if (depth >= MAX_DEPTH) return '[…]';
+    if (Array.isArray(value)) {
+      return value
+        .slice(0, MAX_ARRAY_LEN)
+        .map((item) => this.sanitizeDetail(item, depth + 1));
+    }
+    const out: Record<string, any> = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (SENSITIVE_AUDIT_KEYS.has(key.toLowerCase())) {
+        out[key] = '***';
+      } else {
+        out[key] = this.sanitizeDetail(val, depth + 1);
+      }
+    }
+    return out;
   }
 
   /** Versión no bloqueante (fire-and-forget) para flujos críticos. */

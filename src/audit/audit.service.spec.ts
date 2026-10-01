@@ -51,6 +51,27 @@ describe('AuditService', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('redacta claves sensibles en detail y trunca strings', async () => {
+    mockModel.create.mockResolvedValue({});
+    await service.log({
+      action: 'user.updated',
+      category: 'user',
+      detail: {
+        targetId: 'u1',
+        password: 'secret',
+        nested: { refreshToken: 'abc', keep: 'ok' },
+        long: 'x'.repeat(600),
+      },
+    });
+
+    const calledWith = mockModel.create.mock.calls[0][0];
+    expect(calledWith.detail.password).toBe('***');
+    expect(calledWith.detail.nested.refreshToken).toBe('***');
+    expect(calledWith.detail.nested.keep).toBe('ok');
+    expect(calledWith.detail.targetId).toBe('u1');
+    expect(calledWith.detail.long.endsWith('…')).toBe(true);
+  });
+
   it('findMine pagina, filtra por usuario y rango de fechas', async () => {
     mockModel.find.mockReturnValue(queryChain([{ _id: 'a1', userId: 'u1' }]));
     mockModel.countDocuments.mockReturnValue(queryChain(42));

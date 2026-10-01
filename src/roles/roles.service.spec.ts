@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { RolesService } from './roles.service';
 import { getModelToken } from '@nestjs/mongoose';
 import { NotFoundException } from '@nestjs/common';
+import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 
 describe('RolesService', () => {
   let service: RolesService;
@@ -36,6 +37,10 @@ describe('RolesService', () => {
       providers: [
         RolesService,
         { provide: getModelToken('Rol'), useValue: mockModel },
+        {
+          provide: TenantConfigService,
+          useValue: { ensureRoleLimitPolicy: jest.fn().mockResolvedValue(false) },
+        },
       ],
     }).compile();
 
