@@ -85,6 +85,51 @@ El microservicio usa un **secreto compartido** para autenticar llamadas entre se
 
 Ver `ESTRATEGIA_SEGURIDAD_TCP.md` para la estrategia completa (TLS/mTLS, red, etc.).
 
+### Revocación de sesiones (auth-ms + apps externas)
+
+La revocación se aplica **en el momento en que se valida el token/sesión** (pull), tanto en HTTP como en TCP:
+
+- **HTTP:** `JwtStrategy` valida `sid` (fail-closed: token sin `sid` → 401) y consulta `isSessionActive`.
+- **TCP:** `validateUser` valida además la sesión; una sesión revocada devuelve `UnauthorizedException`.
+- **`validateSession`** (TCP, `{ serviceKey, token }`): booleano `{ active }` sin lanzar, para apps que
+  solo necesitan saber si el token sigue vigente.
+- Todo payload TCP debe incluir `serviceKey`.
+
+Alcance de revocación:
+
+- Un **admin** solo revoca/listа sesiones de usuarios de **su empresa** y **no** puede revocar sesiones de un
+  **SuperAdmin** (403). El SuperAdmin revoca cualquier sesión.
+- Los usuarios pueden gestionar sus propias sesiones (`/api/sessions/mine`).
+
+Caché y escalabilidad:
+
+- `SESSION_CACHE_TTL_MS` (default 30000) controla la caché de validez de sesión. `0` desactiva la caché
+  (recomendado con varias instancias o al usar Redis).
+
+### Documentación informativa (Swagger)
+
+- `GET /api/tcp-docs` (o `/api/tcp-docs/message-patterns`): catálogo de todos los comandos TCP.
+- `GET /api/rest-docs` (o `/api/rest-docs/endpoints`): catálogo de endpoints REST.
+
+### Rate limiting del canal TCP
+
+Los comandos `@MessagePattern` (TCP) también están limitados por `RpcThrottlerGuard`
+(por comando y por emisor `serviceKey`):
+
+- `login`: 5/min · `refresh` y `changePassword`: 10/min · `validateUser`/`validateSession`: 600/min · resto: 100/min.
+- Toggle: `RPC_THROTTLE_ENABLED` (`true` por defecto; `false` desactiva).
+- El límite es **por instancia** (con varias instancias se recomienda Redis). El HTTP sigue usando `ThrottlerHybridGuard` y `@Throttle`.
+
+### Seguridad (endurecimientos)
+
+- **Anti-enumeración:** login y recuperación responden con mensaje genérico; login iguala tiempos con un `bcrypt` de relleno; `check-availability` es admin/superadmin.
+- **Rotación de refresh + detección de reuso:** cada `refresh` emite un refresh nuevo; reutilizar uno ya rotado revoca **todas** las sesiones del usuario (auditoría `refresh.reuse`). Ahora `/api/auth/refresh` devuelve `refreshToken` nuevo.
+- **Errores sanitizados:** `>=500` → mensaje genérico + `requestId`; duplicados (`11000`) → mensaje amigable por campo (sin colección/índice).
+- **JWT:** `HS256` + `issuer`/`audience` (`JWT_ISSUER`/`JWT_AUDIENCE`) en firma y verificación; sin default de 30d.
+- **Helmet + CORS:** cabeceras de seguridad; allowlist de CORS reutilizando `SSO_ALLOWED_ORIGINS`. Los endpoints de documentación (`/api-docs`, `/api/tcp-docs`, `/api/rest-docs`) siguen públicos.
+- **Recovery y verificación por token de un solo uso:** recuperación envía enlace `…/set-password?token=…`; verificación con `POST /api/auth/verify-email` y reenvío en `POST /api/auth/resend-verification`.
+
+
 ### Crear usuario superadmin en producción
 
 En producción el seed automático **NO** crea administradores por defecto (evita credenciales públicas como `admin@admin.com` / `admin`). Para crear el primer superadmin de forma controlada:

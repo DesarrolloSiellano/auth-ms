@@ -2,10 +2,14 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
+  ForbiddenException,
   Logger,
   Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { UserAdminService } from './user-admin.service';
+import { UserLimitsService } from './user-limits.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
@@ -21,6 +25,7 @@ import {
 } from './helpers/user-resolution.helper';
 import { toPublicUser } from './helpers/user.sanitizer';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+import { FeaturePolicyService } from 'src/core/services/feature-policy.service';
 import { tenantLocalStorage } from 'src/core/database/tenant.context';
 
 @Injectable()
@@ -34,6 +39,9 @@ export class UsersService {
     @InjectModel('Module') private readonly moduleModel: Model<any>,
     private readonly mailService: MailService,
     private readonly tenantConfigService: TenantConfigService,
+    private readonly userLimitsService: UserLimitsService,
+    private readonly featurePolicy: FeaturePolicyService,
+    private readonly configService: ConfigService,
     @Optional() private readonly userAdminService?: UserAdminService,
   ) {}
 
@@ -41,10 +49,32 @@ export class UsersService {
     const email = this.normalizeEmail(createUserDto.email);
     const username = this.normalizeUsername(createUserDto.username);
 
-    await this.ensureUserLimit(createUserDto);
+    await this.userLimitsService.assertWithinLimits({
+      company: createUserDto.company,
+      tenantId: (createUserDto as any).tenantId,
+      additionalUsers: 1,
+      roleDemands: this.userLimitsService.buildRoleDemands(
+        this.userLimitsService.extractRoleCodes(createUserDto.roles),
+      ),
+    });
     await this.ensureUniqueIdentity(email, username);
 
-    const isInvite = createUserDto.invite === true;
+    const store = tenantLocalStorage.getStore();
+    const company = createUserDto.company || store?.companyId;
+    const tenantId =
+      (createUserDto as any).tenantId || store?.tenantId || company;
+
+    // `features.invitations = false` degrada la invitación a correo de
+    // bienvenida con usuario y contraseña temporal (sin enlace).
+    const requestedInvite = createUserDto.invite === true;
+    const invitationsEnabled = requestedInvite
+      ? await this.featurePolicy.isEnabled(
+          tenantId,
+          company,
+          'features.invitations',
+        )
+      : true;
+    const isInvite = requestedInvite && invitationsEnabled;
 
     // Generar contraseña temporal segura
     const tempPassword = generatePassword.generate({
@@ -59,21 +89,30 @@ export class UsersService {
       ...createUserDto,
       _id: createUserDto._id, // Si viene de otra app, lo usamos; si no, será undefined y Mongo lo generará
       password: tempPassword,
+      // Al crear (invitación o temporal) el usuario debe establecer/cambiar su
+      // contraseña. `isNewUser` se mantiene en sincronía (compatibilidad).
       mustChangePassword: true,
+      isNewUser: true,
     };
     delete userData.invite;
 
     if (createUserDto.customFields !== undefined) {
-      const store = tenantLocalStorage.getStore();
-      const company = createUserDto.company || store?.companyId;
-      const tenant = (createUserDto as any).tenantId || store?.tenantId;
       userData.customFields = this.userAdminService
         ? await this.userAdminService.validateCustomFields(
             company,
-            tenant,
+            tenantId,
             createUserDto.customFields,
           )
         : createUserDto.customFields;
+    }
+
+    // Período de prueba: `limits.trialDays` (override) o TEST_USER_DAYS.
+    if (createUserDto.isTrial === true) {
+      const days = await this.resolveTrialDays(company, tenantId);
+      userData.isTrial = true;
+      userData.trialStartedAt = new Date();
+      userData.trialEndsAt =
+        days > 0 ? new Date(Date.now() + days * 24 * 60 * 60 * 1000) : null;
     }
 
     let inviteToken = '';
@@ -99,6 +138,8 @@ export class UsersService {
           to: result.email,
           subject: 'Invitación a BpoNet',
           template: 'invite',
+          tenantId,
+          company,
           context: {
             name: result.name,
             platform_name: 'BpoNet',
@@ -117,14 +158,14 @@ export class UsersService {
           to: result.email,
           subject: 'Bienvenido a BpoNet - Activa tu cuenta',
           template: 'welcome',
+          tenantId,
+          company,
           context: {
             name: result.name,
             platform_name: 'BpoNet',
             username: result.email,
             password: tempPassword,
-            login_url: userData.redirectUri
-              ? userData.redirectUri
-              : 'https://app.bponet.com.co',
+            login_url: this.frontUrl(userData.redirectUri),
           },
         })
         .catch((error: any) => {
@@ -160,6 +201,35 @@ export class UsersService {
     const userPermissions = await resolveUserPermissions(payload, this.permissionModel);
     const userModules = await resolveUserModules(payload, this.moduleModel);
 
+    // Apps externas: la empresa/tenant es obligatoria y los topes del tenant
+    // se validan de forma centralizada (fail-closed).
+    const company = payload.company;
+    if (!company) {
+      throw new BadRequestException(
+        'La empresa (company) es obligatoria para crear usuarios',
+      );
+    }
+    const tenantId = payload.tenantId || company;
+    await this.userLimitsService.assertWithinLimits({
+      company,
+      tenantId,
+      additionalUsers: 1,
+      roleDemands: this.userLimitsService.buildRoleDemands(
+        userRoles.map((role: any) => role.codeRol),
+      ),
+    });
+    for (const role of userRoles) {
+      await this.tenantConfigService.ensureRoleLimitPolicy(
+        role.codeRol,
+        role.name,
+      );
+    }
+
+    // `isNewUser` se mantiene en sincronía con `mustChangePassword` para las
+    // apps externas que aún leen `isNewUser`.
+    const isNewUser =
+      payload.isNewUser !== undefined ? payload.isNewUser : true;
+
     const userData = {
       _id: payload._id,
       tenantId: payload.tenantId || payload.company || 'default_tenant',
@@ -178,7 +248,11 @@ export class UsersService {
       isAdmin: payload.isAdmin !== undefined ? payload.isAdmin : false,
       isSuperAdmin:
         payload.isSuperAdmin !== undefined ? payload.isSuperAdmin : false,
-      isNewUser: payload.isNewUser !== undefined ? payload.isNewUser : true,
+      isNewUser,
+      mustChangePassword:
+        payload.mustChangePassword !== undefined
+          ? payload.mustChangePassword
+          : isNewUser,
     };
 
     const newUser = new this.userModel(userData);
@@ -189,14 +263,14 @@ export class UsersService {
         to: result.email,
         subject: 'Bienvenido a BpoNet - Activa tu cuenta',
         template: 'welcome',
+        tenantId: userData.tenantId,
+        company: userData.company,
         context: {
           name: result.name,
           platform_name: 'BpoNet',
           username: result.email,
           password: tempPassword,
-          login_url: payload.redirectUri
-            ? payload.redirectUri
-            : 'https://app.bponet.com.co',
+          login_url: this.frontUrl(payload.redirectUri),
         },
       })
       .catch((error: any) => {
@@ -329,18 +403,32 @@ export class UsersService {
       query.phone = new RegExp(this.escapeRegExp(String(f.phone)), 'i');
     }
     if (f.tags) {
-      const list = String(f.tags)
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
-      if (list.length) query.tags = { $in: list };
+      const tagsEnabled = await this.featurePolicy.isEnabled(
+        user?.tenantId,
+        user?.company,
+        'features.userTags',
+      );
+      if (tagsEnabled) {
+        const list = String(f.tags)
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+        if (list.length) query.tags = { $in: list };
+      }
     }
     if (f.groups) {
-      const list = String(f.groups)
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
-      if (list.length) query.groups = { $in: list };
+      const groupsEnabled = await this.featurePolicy.isEnabled(
+        user?.tenantId,
+        user?.company,
+        'features.userGroups',
+      );
+      if (groupsEnabled) {
+        const list = String(f.groups)
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+        if (list.length) query.groups = { $in: list };
+      }
     }
     if (f.desde || f.hasta) {
       const range: any = {};
@@ -468,7 +556,24 @@ export class UsersService {
     };
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
+  async update(id: string, updateUserDto: UpdateUserDto, requester?: any) {
+    // Aislamiento por empresa + no escalar privilegios.
+    if (requester && !requester.isSuperAdmin) {
+      if ((updateUserDto as any).isAdmin !== undefined) {
+        throw new ForbiddenException(
+          'Solo un SuperAdmin puede cambiar el rol de administrador',
+        );
+      }
+      const target: any = await this.userModel
+        .findOne({ _id: id })
+        .select('isSuperAdmin')
+        .lean()
+        .exec();
+      if (target?.isSuperAdmin) {
+        throw new ForbiddenException('No puedes modificar a un SuperAdmin');
+      }
+    }
+
     const hasEmail = updateUserDto.email !== undefined;
     const hasUsername = updateUserDto.username !== undefined;
     const email = hasEmail ? this.normalizeEmail(updateUserDto.email) : undefined;
@@ -482,10 +587,65 @@ export class UsersService {
       id,
     );
 
+    // Valida el alta neta de roles contra los topes del tenant.
+    if (updateUserDto.roles !== undefined) {
+      const existing: any = await this.userModel
+        .findById(id)
+        .select('company tenantId roles')
+        .lean()
+        .exec();
+      const oldCodes = new Set(
+        this.userLimitsService
+          .extractRoleCodes(existing?.roles)
+          .map((code) => code.toUpperCase()),
+      );
+      const added = this.userLimitsService
+        .extractRoleCodes(updateUserDto.roles)
+        .filter((code) => !oldCodes.has(code.toUpperCase()));
+
+      if (added.length > 0) {
+        await this.userLimitsService.assertWithinLimits({
+          company: existing?.company,
+          tenantId: existing?.tenantId,
+          additionalUsers: 0,
+          roleDemands: this.userLimitsService.buildRoleDemands(added),
+        });
+        for (const code of added) {
+          await this.tenantConfigService.ensureRoleLimitPolicy(code);
+        }
+      }
+    }
+
     const setFields: any = { ...updateUserDto };
+    // Defensa en profundidad: nunca permitir campos privilegiados por esta vía.
+    for (const field of [
+      'isSuperAdmin',
+      'company',
+      'tenantId',
+      'password',
+      'passwordResetToken',
+      'passwordResetExpires',
+      'permissions',
+      'modules',
+      '_id',
+      'created',
+      'modified',
+      'idUserModified',
+      'createdDate',
+      'createdHour',
+      'updatedDate',
+      'updatedAtHour',
+    ]) {
+      delete setFields[field];
+    }
     delete setFields.email;
     delete setFields.username;
     if (hasEmail && email) setFields.email = email;
+
+    // Mantiene `mustChangePassword` en sincronía con `isNewUser`.
+    if (updateUserDto.isNewUser !== undefined) {
+      setFields.mustChangePassword = updateUserDto.isNewUser === true;
+    }
 
     if (updateUserDto.customFields !== undefined) {
       const existing = await this.userModel
@@ -493,7 +653,7 @@ export class UsersService {
         .select('company tenantId')
         .lean()
         .exec();
-      const company = updateUserDto.company || existing?.company;
+      const company = existing?.company;
       setFields.customFields = this.userAdminService
         ? await this.userAdminService.validateCustomFields(
             company,
@@ -501,6 +661,29 @@ export class UsersService {
             updateUserDto.customFields,
           )
         : updateUserDto.customFields;
+    }
+
+    // Prueba: al marcar se inicia el período; al desmarcar se limpia.
+    if (updateUserDto.isTrial !== undefined) {
+      const existing: any = await this.userModel
+        .findById(id)
+        .select('company tenantId isTrial')
+        .lean()
+        .exec();
+      const wantsTrial = updateUserDto.isTrial === true;
+      if (wantsTrial && existing?.isTrial !== true) {
+        const company = existing?.company;
+        const tenant = existing?.tenantId;
+        const days = await this.resolveTrialDays(company, tenant);
+        setFields.isTrial = true;
+        setFields.trialStartedAt = new Date();
+        setFields.trialEndsAt =
+          days > 0 ? new Date(Date.now() + days * 24 * 60 * 60 * 1000) : null;
+      } else if (!wantsTrial) {
+        setFields.isTrial = false;
+        setFields.trialStartedAt = null;
+        setFields.trialEndsAt = null;
+      }
     }
 
     const updateOperation: any = { $set: setFields };
@@ -583,33 +766,24 @@ export class UsersService {
   }
 
   /**
-   * Valida el límite de usuarios de la empresa (`limits.maxUsers`).
-   * 0 = sin límite. La empresa/tenant se toma del DTO o del contexto.
+   * Días de prueba: `limits.trialDays` (>0) sobrescribe; si no, TEST_USER_DAYS.
+   * 0 = sin expiración.
    */
-  private async ensureUserLimit(dto: any): Promise<void> {
-    const store = tenantLocalStorage.getStore();
-    const company = dto?.company || store?.companyId;
-    const tenantId = dto?.tenantId || store?.tenantId || company;
-    if (!company) return;
-
-    const raw = await this.tenantConfigService.getPolicyValue(
-      tenantId,
-      company,
-      'limits.maxUsers',
+  private async resolveTrialDays(
+    company?: string,
+    tenantId?: string,
+  ): Promise<number> {
+    const policy = Number(
+      await this.tenantConfigService.getPolicyValue(
+        tenantId,
+        company,
+        'limits.trialDays',
+      ),
     );
-    const limit = Number(raw) || 0;
-    if (limit <= 0) return;
+    if (Number.isFinite(policy) && policy > 0) return policy;
 
-    const count = await this.userModel
-      .countDocuments({ company })
-      .setOptions({ bypassTenant: true })
-      .exec();
-
-    if (count >= limit) {
-      throw new ConflictException(
-        `Se alcanzó el máximo de usuarios permitido para la empresa (${limit})`,
-      );
-    }
+    const env = Number(this.configService.get<string>('TEST_USER_DAYS', '7'));
+    return Number.isFinite(env) && env > 0 ? env : 0;
   }
 
   private async ensureUniqueIdentity(

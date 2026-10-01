@@ -2,8 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UserAdminService } from './user-admin.service';
+import { UserLimitsService } from './user-limits.service';
 import { MailService } from 'src/mail/mail.service';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+import { FeaturePolicyService } from 'src/core/services/feature-policy.service';
 import { SessionsService } from 'src/sessions/sessions.service';
 import { AuditService } from 'src/audit/audit.service';
 
@@ -33,9 +35,21 @@ describe('UserAdminService', () => {
   const rolModel: any = {};
   const moduleModel: any = {};
   const mailService: any = { sendEmail: jest.fn().mockResolvedValue(undefined) };
-  const tenantConfigService: any = { getPolicyValue: jest.fn() };
+  const tenantConfigService: any = {
+    getPolicyValue: jest.fn(),
+    ensureRoleLimitPolicy: jest.fn(),
+  };
+  const userLimitsService: any = {
+    assertWithinLimits: jest.fn(),
+    extractRoleCodes: jest.fn().mockReturnValue([]),
+    ensureRoleLimitPolicy: jest.fn(),
+  };
   const sessionsService: any = { revokeByUser: jest.fn() };
   const auditService: any = { logAsync: jest.fn() };
+  const featurePolicy: any = {
+    isEnabled: jest.fn().mockResolvedValue(true),
+    assertEnabled: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -52,6 +66,8 @@ describe('UserAdminService', () => {
         { provide: getModelToken('Module'), useValue: moduleModel },
         { provide: MailService, useValue: mailService },
         { provide: TenantConfigService, useValue: tenantConfigService },
+        { provide: FeaturePolicyService, useValue: featurePolicy },
+        { provide: UserLimitsService, useValue: userLimitsService },
         { provide: SessionsService, useValue: sessionsService },
         { provide: AuditService, useValue: auditService },
       ],
@@ -139,4 +155,38 @@ describe('UserAdminService', () => {
     expect(ok).toEqual({ centro: 'A', nivel: 3 });
   });
 
+  it('setTagsGroups lanza 403 si features.userTags está deshabilitada', async () => {
+    const id = '507f1f77bcf86cd799439011';
+    userModel.findOne.mockReturnValue(
+      chain({ _id: id, company: 'X', isSuperAdmin: false }),
+    );
+    featurePolicy.assertEnabled.mockRejectedValueOnce(
+      new ForbiddenException('No disponible'),
+    );
+
+    await expect(
+      service.setTagsGroups(id, { isAdmin: true, company: 'X' }, {
+        tags: ['a'],
+      }),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('validateCustomFields lanza 403 si features.customFields está deshabilitada', async () => {
+    featurePolicy.isEnabled.mockResolvedValue(false);
+
+    await expect(
+      service.validateCustomFields('X', 't', { centro: 'A' }),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('listCustomFields devuelve vacío si features.customFields está deshabilitada', async () => {
+    featurePolicy.isEnabled.mockResolvedValue(false);
+
+    const result = await service.listCustomFields({
+      isAdmin: true,
+      company: 'X',
+    });
+    expect(result.data).toEqual([]);
+    expect(result.meta.totalData).toBe(0);
+  });
 });

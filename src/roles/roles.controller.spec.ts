@@ -7,6 +7,7 @@ import { RolesService } from './roles.service';
 describe('RolesController', () => {
   let controller: RolesController;
   const superAdminReq = { user: { isSuperAdmin: true } };
+  const adminReq = { user: { isAdmin: true, isSuperAdmin: false } };
   const serviceMock = {
     create: jest.fn(),
     findAll: jest.fn(),
@@ -46,19 +47,27 @@ describe('RolesController', () => {
     ).toThrow(ForbiddenException);
   });
 
-  it('findAll delega', () => {
+  it('findAll delega (admin)', () => {
     serviceMock.findAll.mockReturnValue('list');
-    expect(controller.findAll()).toBe('list');
+    expect(controller.findAll(adminReq)).toBe('list');
+  });
+
+  it('findAll rechaza a usuario no-admin', () => {
+    expect(() =>
+      controller.findAll({ user: { isAdmin: false, isSuperAdmin: false } }),
+    ).toThrow(ForbiddenException);
   });
 
   it('findByPage delega', () => {
     serviceMock.findByPage.mockReturnValue('page');
-    expect(controller.findByPage(undefined, undefined, undefined)).toBe('page');
+    expect(
+      controller.findByPage(undefined, undefined, undefined, adminReq),
+    ).toBe('page');
   });
 
   it('findOne delega', () => {
     serviceMock.findOne.mockReturnValue('one');
-    expect(controller.findOne('r1')).toBe('one');
+    expect(controller.findOne('r1', adminReq)).toBe('one');
   });
 
   it('update exige SuperAdmin y delega', () => {
@@ -71,11 +80,6 @@ describe('RolesController', () => {
   it('remove exige SuperAdmin y delega', () => {
     serviceMock.remove.mockReturnValue('del');
     expect(controller.remove('r1', superAdminReq)).toBe('del');
-  });
-
-  it('tcpPatternsDoc devuelve documentación', () => {
-    const result = controller.tcpPatternsDoc();
-    expect(result.patterns.length).toBeGreaterThan(0);
   });
 
   it('msCreate delega', () => {

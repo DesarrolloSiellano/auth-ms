@@ -19,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
+import { resolveRequestOrigin } from 'src/core/helpers/app-url.helper';
 import { MassiveUsersService } from './massive-users.service';
 
 @ApiTags('users')
@@ -102,6 +103,10 @@ export class MassiveUsersController {
     if (!file) {
       throw new BadRequestException('Archivo no encontrado en la petición');
     }
-    return this.massiveUsersService.processExcel(file, user);
+    return this.massiveUsersService.processExcel(
+      file,
+      user,
+      resolveRequestOrigin(req),
+    );
   }
 }

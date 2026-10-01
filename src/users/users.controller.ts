@@ -34,6 +34,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 import { ServiceOrJwtGuard } from 'src/core/guards/service-or-jwt.guard';
+import { resolveRequestOrigin } from 'src/core/helpers/app-url.helper';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -78,6 +79,21 @@ export class UsersController {
       throw new ForbiddenException(
         'Solo un SuperAdmin puede crear usuarios SuperAdmin',
       );
+    }
+    // Aislamiento multi-tenant: un usuario de empresa solo crea en SU empresa.
+    if (!user.isSuperAdmin) {
+      if (createUserDto.company && createUserDto.company !== user.company) {
+        throw new ForbiddenException(
+          'No puedes crear usuarios para otra empresa',
+        );
+      }
+      createUserDto.company = user.company;
+      (createUserDto as any).tenantId = user.tenantId || user.company;
+    }
+    // Los enlaces de invitación/bienvenida usan el origen real del sitio.
+    if (!createUserDto.redirectUri) {
+      const origin = resolveRequestOrigin(req);
+      if (origin) createUserDto.redirectUri = origin;
     }
     return this.usersService.create(createUserDto);
   }
@@ -440,10 +456,15 @@ export class UsersController {
   @ApiQuery({ name: 'username', required: false, type: String })
   @ApiQuery({ name: 'excludeId', required: false, type: String })
   checkAvailability(
+    @Req() req: any,
     @Query('email') email?: string,
     @Query('username') username?: string,
     @Query('excludeId') excludeId?: string,
   ) {
+    // Anti-enumeración: solo administradores pueden consultar existencia global.
+    if (!req?.user?.isAdmin && !req?.user?.isSuperAdmin) {
+      throw new ForbiddenException('Se requieren permisos de administrador');
+    }
     return this.usersService.checkAvailability({ email, username, excludeId });
   }
 
@@ -523,7 +544,11 @@ export class UsersController {
   @UseGuards(ValidateObjectIdGuard)
   @ApiOperation({ summary: 'Reenvía invitación/activación a un usuario' })
   resendInvite(@Param('id') id: string, @Req() req: any) {
-    return this.userAdminService!.resendInvite(id, req.user);
+    return this.userAdminService!.resendInvite(
+      id,
+      req.user,
+      resolveRequestOrigin(req),
+    );
   }
 
   @Patch(':id/block')
@@ -642,13 +667,13 @@ export class UsersController {
     if (!user.isAdmin && !user.isSuperAdmin) {
       throw new UnauthorizedException('No tienes permiso para actualizar usuarios');
     }
-    // Solo un SuperAdmin puede otorgar el rol SuperAdmin.
-    if (updateUserDto.isSuperAdmin === true && !user.isSuperAdmin) {
+    // Solo un SuperAdmin puede otorgar/quitar `isAdmin`.
+    if (updateUserDto.isAdmin !== undefined && !user.isSuperAdmin) {
       throw new ForbiddenException(
-        'Solo un SuperAdmin puede asignar el rol SuperAdmin',
+        'Solo un SuperAdmin puede cambiar el rol de administrador',
       );
     }
-    return this.usersService.update(id, updateUserDto);
+    return this.usersService.update(id, updateUserDto, user);
   }
 
   @Delete(':id/hard')
@@ -778,196 +803,5 @@ export class UsersController {
   msHardRemove(@Payload() payload: any) {
     const id = payload?.id ?? payload;
     return this.userAdminService!.hardRemove(id, this.serviceRequester(payload));
-  }
-
-  @Post('tcp-docs/message-patterns')
-  @ApiOperation({
-    summary: '[SOLO DOCUMENTACIÓN] Patrones TCP soportados por UsersService',
-    description: `
-Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
-**No enviar datos reales aquí; la comunicación real es por sockets TCP.**
-
-**Autenticación entre servicios (obligatoria):** todo payload TCP debe incluir
-\`serviceKey\` con el valor de \`SERVICE_API_KEY\`. Los handlers que antes recibían
-una primitiva (\`id\`) ahora reciben \`{ serviceKey, id }\`.
-
-Ejemplos de uso:
-\`@MessagePattern({ cmd: 'createUser' })\`
-  `,
-  })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Documentación de patrones TCP disponible en este microservicio',
-    schema: {
-      example: {
-        message: 'Comandos TCP disponibles en users',
-        patterns: [
-          {
-            command: 'createUser',
-            description:
-              'Crea un usuario. Payload: CreateUserDto. Devuelve objeto de creación.',
-            payloadExample: {
-              name: 'Juan',
-              lastName: 'Perez',
-              email: 'juan@mail.com',
-              username: 'juanp',
-              password: 'password123',
-              isActived: true,
-              isAdmin: false,
-              isNewUser: true,
-              company: 'EmpresaX',
-              phone: '+573001234567',
-            },
-            responseExample: {
-              message: 'User created successfully',
-              statusCode: 201,
-              status: 'Success',
-              data: {
-                /* objeto usuario creado */
-              },
-              meta: { totalData: 1, createdAt: '2025-08-06T12:00:00Z' },
-            },
-          },
-          {
-            command: 'findAllUsers',
-            description: 'Trae todos los usuarios. Payload: ninguno.',
-            responseExample: {
-              message: 'Users retrieved successfully',
-              statusCode: 200,
-              status: 'Success',
-              data: [
-                /* array de usuarios */
-              ],
-              meta: { totalData: 10 },
-            },
-          },
-          {
-            command: 'findUsersByPagination',
-            description:
-              'Trae usuarios paginados. Payload: { page: number, limit: number }.',
-            payloadExample: {
-              page: 1,
-              limit: 10,
-            },
-          },
-          {
-            command: 'findUserById',
-            description: 'Busca un usuario por ID. Payload: id:string.',
-            payloadExample: { id: 'id-usuario' },
-          },
-          {
-            command: 'findUsersByDate',
-            description:
-              'Busca usuarios por rango de fechas. Payload: { startDate: string, endDate: string }.',
-            payloadExample: {
-              startDate: '2025-08-01T00:00:00Z',
-              endDate: '2025-08-31T23:59:59Z',
-            },
-          },
-          {
-            command: 'updateUser',
-            description:
-              'Actualiza un usuario. Payload: { id: string, updateUserDto: UpdateUserDto }.',
-            payloadExample: {
-              id: 'id',
-              updateUserDto: {
-                /* campos actualización */
-              },
-            },
-          },
-          {
-            command: 'removeUser',
-            description: 'Elimina un usuario. Payload: id:string.',
-            payloadExample: { id: 'id-usuario' },
-          },
-        ],
-      },
-    },
-  })
-  tcpPatternsDoc() {
-    return {
-      message: 'Comandos TCP disponibles en users',
-      patterns: [
-        {
-          command: 'createUser',
-          description:
-            'Crea un usuario. Payload: CreateUserDto. Devuelve objeto de creación.',
-          payloadExample: {
-            name: 'Juan',
-            lastName: 'Perez',
-            email: 'juan@mail.com',
-            username: 'juanp',
-            password: 'password123',
-            isActived: true,
-            isAdmin: false,
-            isNewUser: true,
-            company: 'EmpresaX',
-            phone: '+573001234567',
-          },
-          responseExample: {
-            message: 'User created successfully',
-            statusCode: 201,
-            status: 'Success',
-            data: {
-              /* objeto usuario creado */
-            },
-            meta: { totalData: 1, createdAt: '2025-08-06T12:00:00Z' },
-          },
-        },
-        {
-          command: 'findAllUsers',
-          description: 'Trae todos los usuarios. Payload: ninguno.',
-          responseExample: {
-            message: 'Users retrieved successfully',
-            statusCode: 200,
-            status: 'Success',
-            data: [
-              /* ...array de usuarios... */
-            ],
-            meta: { totalData: 10 },
-          },
-        },
-        {
-          command: 'findUsersByPagination',
-          description:
-            'Trae usuarios paginados. Payload: { page: number, limit: number }.',
-          payloadExample: {
-            page: 1,
-            limit: 10,
-          },
-        },
-        {
-          command: 'findUserById',
-          description: 'Busca un usuario por ID. Payload: id:string.',
-          payloadExample: { id: 'id-usuario' },
-        },
-        {
-          command: 'findUsersByDate',
-          description:
-            'Busca usuarios por rango de fechas. Payload: { startDate: string, endDate: string }.',
-          payloadExample: {
-            startDate: '2025-08-01T00:00:00Z',
-            endDate: '2025-08-31T23:59:59Z',
-          },
-        },
-        {
-          command: 'updateUser',
-          description:
-            'Actualiza un usuario. Payload: { id: string, updateUserDto: UpdateUserDto }.',
-          payloadExample: {
-            id: 'id',
-            updateUserDto: {
-              /* ...campos actualización... */
-            },
-          },
-        },
-        {
-          command: 'removeUser',
-          description: 'Elimina un usuario. Payload: id:string.',
-          payloadExample: { id: 'id-usuario' },
-        },
-      ],
-    };
   }
 }

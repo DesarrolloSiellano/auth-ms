@@ -10,7 +10,7 @@ import { Permission } from 'src/permissions/entities/permission.entity';
 import { Module } from 'src/modules/entities/module.entity';
 import { Company } from 'src/companies/entities/company.entity';
 import { MailService } from 'src/mail/mail.service';
-import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+import { UserLimitsService } from 'src/users/user-limits.service';
 import {
   MassiveUploadReportDto,
   MassiveUserStatus,
@@ -62,12 +62,13 @@ export class MassiveUsersService {
     @InjectModel('Module') private readonly moduleModel: Model<Module>,
     @InjectModel('Company') private readonly companyModel: Model<Company>,
     private readonly mailService: MailService,
-    private readonly tenantConfigService: TenantConfigService,
+    private readonly userLimitsService: UserLimitsService,
   ) {}
 
   async processExcel(
     file: any,
     requester: MassiveUploadRequester,
+    baseUrl?: string,
   ): Promise<{
     message: string;
     statusCode: number;
@@ -150,9 +151,17 @@ export class MassiveUsersService {
     const seenEmails = new Set<string>();
     const seenUsernames = new Set<string>();
 
+    // Base del sitio para los enlaces de bienvenida (origen real de la app).
+    const loginBase =
+      baseUrl || process.env.APP_URL || 'https://app.bponet.com.co';
+
     // Límite de usuarios por empresa (limits.maxUsers; 0 = ilimitado).
     const userLimits = new Map<string, number>();
     const companyUserCounts = new Map<string, number>();
+    // Límites por rol (limits.roles.<CODE>; 0 = ilimitado).
+    const roleLimits = new Map<string, number>();
+    const roleUserCounts = new Map<string, number>();
+    const rolePolicySeen = new Set<string>();
 
     // Solo el SuperAdmin puede crear usuarios para otras empresas: se validan
     // las parejas Empresa+TenantId del archivo contra las empresas activas con
@@ -260,6 +269,8 @@ export class MassiveUsersService {
           }
         }
 
+        const roles = await this.resolveRoles(rolesInput);
+
         // Límite de usuarios de la empresa (0 = ilimitado)
         const maxUsers = await this.getUserLimit(company, tenantId, userLimits);
         if (maxUsers > 0) {
@@ -274,7 +285,32 @@ export class MassiveUsersService {
           }
         }
 
-        const roles = await this.resolveRoles(rolesInput);
+        // Límite por rol (limits.roles.<CODE>; 0 = ilimitado). Se registra la
+        // política del rol si aún no existe.
+        for (const role of roles) {
+          const code = role?.codeRol;
+          if (!code) continue;
+          await this.ensureRolePolicy(code, role?.name, rolePolicySeen);
+          const roleLimit = await this.getRoleLimit(
+            company,
+            tenantId,
+            code,
+            roleLimits,
+          );
+          if (roleLimit > 0) {
+            const current = await this.getRoleUserCount(
+              company,
+              code,
+              roleUserCounts,
+            );
+            if (current >= roleLimit) {
+              throw new Error(
+                `Se alcanzó el máximo de usuarios con el rol ${code} de la empresa (${roleLimit})`,
+              );
+            }
+          }
+        }
+
         const permissions = await this.resolvePermissions(permissionsInput);
         const modules = await this.resolveModules(modulesInput);
 
@@ -308,6 +344,12 @@ export class MassiveUsersService {
         await newUser.save();
 
         companyUserCounts.set(company, (companyUserCounts.get(company) || 0) + 1);
+        for (const role of roles) {
+          const code = role?.codeRol;
+          if (!code) continue;
+          const key = `${company}::${code}`;
+          roleUserCounts.set(key, (roleUserCounts.get(key) || 0) + 1);
+        }
 
         // Envío de correo NO bloqueante (igual que la creación individual)
         this.mailService
@@ -315,12 +357,14 @@ export class MassiveUsersService {
             to: email,
             subject: 'Bienvenido a BpoNet - Activa tu cuenta',
             template: 'welcome',
+            tenantId,
+            company,
             context: {
               name,
               platform_name: 'BpoNet',
               username: username || email,
               password: tempPassword,
-              login_url: 'https://app.bponet.com.co',
+              login_url: loginBase,
             },
           })
           .catch((mailError: any) => {
@@ -405,17 +449,12 @@ export class MassiveUsersService {
     if (cache.has(company)) {
       return cache.get(company) as number;
     }
-    const raw = await this.tenantConfigService.getPolicyValue(
-      tenantId,
-      company,
-      'limits.maxUsers',
-    );
-    const limit = Number(raw) || 0;
+    const limit = await this.userLimitsService.resolveUserLimit(tenantId, company);
     cache.set(company, limit);
     return limit;
   }
 
-  /** Conteo actual de usuarios de la empresa, con caché por empresa. */
+  /** Conteo actual de usuarios activos de la empresa, con caché por empresa. */
   private async getCompanyUserCount(
     company: string,
     cache: Map<string, number>,
@@ -423,13 +462,56 @@ export class MassiveUsersService {
     if (cache.has(company)) {
       return cache.get(company) as number;
     }
-    const count = await this.userModel
-      .countDocuments({ company })
-      .setOptions({ bypassTenant: true })
-      .exec();
-    const total = Number(count) || 0;
+    const total = await this.userLimitsService.countActiveUsers(company);
     cache.set(company, total);
     return total;
+  }
+
+  /** Límite de usuarios de un rol (0 = ilimitado), con caché por empresa+rol. */
+  private async getRoleLimit(
+    company: string,
+    tenantId: string,
+    code: string,
+    cache: Map<string, number>,
+  ): Promise<number> {
+    const key = `${company}::${code}`;
+    if (cache.has(key)) {
+      return cache.get(key) as number;
+    }
+    const limit = await this.userLimitsService.resolveRoleLimit(
+      tenantId,
+      company,
+      code,
+    );
+    cache.set(key, limit);
+    return limit;
+  }
+
+  /** Conteo actual de usuarios activos con un rol, con caché por empresa+rol. */
+  private async getRoleUserCount(
+    company: string,
+    code: string,
+    cache: Map<string, number>,
+  ): Promise<number> {
+    const key = `${company}::${code}`;
+    if (cache.has(key)) {
+      return cache.get(key) as number;
+    }
+    const total = await this.userLimitsService.countActiveUsers(company, code);
+    cache.set(key, total);
+    return total;
+  }
+
+  /** Registra la política de tope del rol una sola vez por lote. */
+  private async ensureRolePolicy(
+    code: string,
+    label: string | undefined,
+    seen: Set<string>,
+  ): Promise<void> {
+    const key = String(code).trim().toUpperCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    await this.userLimitsService.ensureRoleLimitPolicy(code, label);
   }
 
   private clean(value: any): string {

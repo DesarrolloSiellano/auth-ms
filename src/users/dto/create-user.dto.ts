@@ -132,6 +132,15 @@ export class CreateUserDto {
   isNewUser: boolean;
 
   @ApiPropertyOptional({
+    example: true,
+    description:
+      'Marca el usuario como período de prueba. Al vencer no podrá iniciar sesión.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isTrial?: boolean;
+
+  @ApiPropertyOptional({
     example: 'EmpresaX',
     description: 'Nombre de la empresa del usuario',
   })

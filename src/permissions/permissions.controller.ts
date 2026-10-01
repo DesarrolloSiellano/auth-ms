@@ -43,6 +43,13 @@ export class PermissionsController {
     }
   }
 
+  /** Lectura del catálogo: admin de empresa o SuperAdmin. */
+  private assertAdmin(req: any): void {
+    if (!req?.user?.isAdmin && !req?.user?.isSuperAdmin) {
+      throw new ForbiddenException('Se requieren permisos de administrador');
+    }
+  }
+
   // Métodos HTTP REST
 
   @Post()
@@ -90,7 +97,8 @@ export class PermissionsController {
       },
     },
   })
-  findAll() {
+  findAll(@Req() req: any) {
+    this.assertAdmin(req);
     return this.permissionsService.findAll();
   }
 
@@ -115,7 +123,9 @@ export class PermissionsController {
     @Query('from') from?: number,
     @Query('limit') limit?: number,
     @Query('global') global?: string,
+    @Req() req?: any,
   ) {
+    this.assertAdmin(req);
     const fromNumber = from !== undefined ? Number(from) : 0;
     const limiteNumber = limit !== undefined ? Number(limit) : 10;
     return this.permissionsService.findByPage(fromNumber, limiteNumber, global);
@@ -144,7 +154,8 @@ export class PermissionsController {
     description: 'Permiso no encontrado',
   })
   @UseGuards(ValidateObjectIdGuard)
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id') id: string, @Req() req: any) {
+    this.assertAdmin(req);
     return this.permissionsService.findOne(id);
   }
 
@@ -253,154 +264,5 @@ export class PermissionsController {
   msRemove(@Payload() payload: any) {
     const id = payload?.id ?? payload;
     return this.permissionsService.remove(id);
-  }
-
-  @Post('tcp-docs/message-patterns')
-  @ApiOperation({
-    summary:
-      '[SOLO DOCUMENTACIÓN] Patrones TCP soportados por PermissionsService',
-    description: `
-Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
-**No enviar datos reales aquí; la comunicación real es por sockets TCP.**
-
-**Autenticación entre servicios (obligatoria):** todo payload TCP debe incluir
-\`serviceKey\` con el valor de \`SERVICE_API_KEY\`. Los handlers que antes recibían
-una primitiva (\`id\`) ahora reciben \`{ serviceKey, id }\`.
-
-Ejemplos de uso del decorador @MessagePattern en NestJS:
-\`@MessagePattern({ cmd: 'createPermission' })\`
-    `,
-  })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Documentación de patrones TCP disponible en este microservicio',
-    schema: {
-      example: {
-        message: 'Comandos TCP disponibles en permissions',
-        patterns: [
-          {
-            command: 'createPermission',
-            description:
-              'Crea un permiso. Payload: CreatePermissionDto. Devuelve objeto de creación.',
-            payloadExample: {
-              name: 'Crear usuario',
-              description: 'Permite crear un usuario',
-              action: 'create',
-              type: 'role-based',
-              created: '2025-08-06T12:00:00Z',
-              isActive: true,
-              // ...otros campos relevantes
-            },
-            responseExample: {
-              message: 'Permission created successfully',
-              statusCode: 201,
-              status: 'Success',
-              data: {
-                /* objeto permiso creado */
-              },
-              meta: { totalData: 1, createdAt: '2025-08-06T12:00:00Z' },
-            },
-          },
-          {
-            command: 'findAllPermissions',
-            description: 'Trae todos los permisos. Payload: ninguno.',
-            responseExample: {
-              message: 'find all permissions',
-              statusCode: 200,
-              status: 'Success',
-              data: [
-                /* permisos */
-              ],
-              meta: { totalData: 5 },
-            },
-          },
-          {
-            command: 'findOnePermission',
-            description: 'Busca un permiso por ID. Payload: id:string.',
-            payloadExample: { id: 'id-permiso' },
-          },
-          {
-            command: 'updatePermission',
-            description:
-              'Actualiza un permiso. Payload: { id: string, updatePermissionDto: UpdatePermissionDto }.',
-            payloadExample: {
-              id: 'id',
-              updatePermissionDto: {
-                /* campos UpdatePermissionDto */
-              },
-            },
-          },
-          {
-            command: 'removePermission',
-            description: 'Elimina un permiso. Payload: id:string.',
-            payloadExample: { id: 'id-permiso' },
-          },
-        ],
-      },
-    },
-  })
-  tcpPatternsDoc() {
-    return {
-      message: 'Comandos TCP disponibles en permissions',
-      patterns: [
-        {
-          command: 'createPermission',
-          description:
-            'Crea un permiso. Payload: CreatePermissionDto. Devuelve objeto de creación.',
-          payloadExample: {
-            name: 'Crear usuario',
-            description: 'Permite crear un usuario',
-            action: 'create',
-            type: 'role-based',
-            created: '2025-08-06T12:00:00Z',
-            isActive: true,
-          },
-          responseExample: {
-            message: 'Permission created successfully',
-            statusCode: 201,
-            status: 'Success',
-            data: {
-              /* ...estructura del permiso creado... */
-            },
-            meta: { totalData: 1, createdAt: '2025-08-06T12:00:00Z' },
-          },
-        },
-        {
-          command: 'findAllPermissions',
-          description: 'Trae todos los permisos. Payload: ninguno.',
-          responseExample: {
-            message: 'find all permissions',
-            statusCode: 200,
-            status: 'Success',
-            data: [
-              /* ...array de permisos... */
-            ],
-            meta: { totalData: 5 },
-          },
-        },
-        {
-          command: 'findOnePermission',
-          description: 'Busca un permiso por ID. Payload: id:string.',
-          payloadExample: { id: 'id-permiso' },
-        },
-        {
-          command: 'updatePermission',
-          description:
-            'Actualiza un permiso. Payload: { id: string, updatePermissionDto: UpdatePermissionDto }.',
-          payloadExample: {
-            id: 'id',
-            updatePermissionDto: {
-              /* ...campos de actualización... */
-            },
-          },
-        },
-        {
-          command: 'removePermission',
-          description: 'Elimina un permiso. Payload: id:string.',
-          payloadExample: { id: 'id-permiso' },
-        },
-      ],
-    };
   }
 }

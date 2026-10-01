@@ -10,6 +10,7 @@ import { MailService } from 'src/mail/mail.service';
 
 import { MassiveUsersController } from './massive-users.controller';
 import { MassiveUsersService } from './massive-users.service';
+import { UserLimitsService } from 'src/users/user-limits.service';
 
 @Module({
   imports: [
@@ -22,6 +23,6 @@ import { MassiveUsersService } from './massive-users.service';
     ]),
   ],
   controllers: [MassiveUsersController],
-  providers: [MassiveUsersService, MailService],
+  providers: [MassiveUsersService, UserLimitsService, MailService],
 })
 export class MassiveUsersModule {}

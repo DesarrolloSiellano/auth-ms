@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { AuthService } from './auth.service';
 import { EncryptionService } from 'src/core/services/encryption.service';
 import { JwtService } from '@nestjs/jwt';
@@ -8,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { SessionsService } from 'src/sessions/sessions.service';
 import { getModelToken } from '@nestjs/mongoose';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+import { LocaleService } from 'src/core/services/locale.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -44,10 +46,24 @@ describe('AuthService', () => {
     })),
   };
 
+  const mockCompanyModel = {
+    findOne: jest.fn(() => ({
+      lean: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      }),
+    })),
+    updateOne: jest.fn(() => ({
+      exec: jest.fn().mockResolvedValue({}),
+    })),
+  };
+
   const mockSessionsService = {
     createSession: jest.fn().mockResolvedValue({}),
     findActiveByRefreshHash: jest.fn(),
+    findActiveById: jest.fn(),
+    rotateRefreshToken: jest.fn().mockResolvedValue(undefined),
     deactivateByRefreshHash: jest.fn().mockResolvedValue(undefined),
+    revokeByUser: jest.fn().mockResolvedValue(0),
     touch: jest.fn().mockResolvedValue(undefined),
     isSessionActive: jest.fn().mockResolvedValue(true),
   };
@@ -63,12 +79,17 @@ describe('AuthService', () => {
   };
 
   beforeEach(async () => {
+    tenantConfigServiceMock.getPolicyValue.mockReset();
+    tenantConfigServiceMock.getPolicyValue.mockResolvedValue(undefined);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         {
           provide: EncryptionService,
-          useValue: { verifyPassword: jest.fn(), hashPassword: jest.fn() },
+          useValue: {
+            verifyPassword: jest.fn().mockResolvedValue(true),
+            hashPassword: jest.fn().mockResolvedValue('hash'),
+          },
         },
         {
           provide: JwtService,
@@ -78,12 +99,14 @@ describe('AuthService', () => {
           },
         },
         { provide: getModelToken('User'), useValue: mockUserModel },
+        { provide: getModelToken('Company'), useValue: mockCompanyModel },
         { provide: SessionsService, useValue: mockSessionsService },
         { provide: MailService, useValue: mailServiceMock },
         {
           provide: TenantConfigService,
           useValue: tenantConfigServiceMock,
         },
+        LocaleService,
         {
           provide: ConfigService,
           useValue: {
@@ -133,6 +156,9 @@ describe('AuthService', () => {
       company: 'EmpresaX',
       tenantId: '000000',
       isSuperAdmin: false,
+      isTrial: false,
+      trialStartedAt: null,
+      trialEndsAt: null,
       sid: expect.any(String),
     });
     expect(accessPayload).not.toHaveProperty('modules');
@@ -158,13 +184,41 @@ describe('AuthService', () => {
     });
   });
 
+  it('crea la sesión con isSuperAdmin denormalizado', async () => {
+    mockUserModel.findOne.mockReturnValue({
+      lean: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(userMock),
+      }),
+    });
+    jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(true);
+
+    await service.login({ email: 'juan@mail.com', password: 'x' }, '127.0.0.1');
+
+    expect(mockSessionsService.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ isSuperAdmin: false, user: 'abc123' }),
+    );
+  });
+
   describe('refreshAccessToken', () => {
-    it('refresca con un token válido y devuelve payload de identidad', async () => {
+    it('refresca con un token válido, rota el refresh y devuelve payload', async () => {
+      const hash = crypto
+        .createHash('sha256')
+        .update('valid.token')
+        .digest('hex');
       const verifySpy = jest
         .spyOn(jwtService, 'verify')
-        .mockReturnValue({ _id: 'abc123' } as any);
-      const session = { _id: 'sess1', user: 'abc123', isActive: true };
-      mockSessionsService.findActiveByRefreshHash.mockResolvedValue(session);
+        .mockReturnValue({
+          _id: 'abc123',
+          sid: '507f1f77bcf86cd799439011',
+        } as any);
+      const session = {
+        _id: '507f1f77bcf86cd799439011',
+        user: 'abc123',
+        isActive: true,
+        refreshToken: hash,
+        usedRefreshTokens: [],
+      };
+      mockSessionsService.findActiveById.mockResolvedValue(session);
       mockUserModel.findById.mockReturnValue({
         lean: jest.fn().mockReturnValue({
           exec: jest.fn().mockResolvedValue(userMock),
@@ -174,6 +228,8 @@ describe('AuthService', () => {
       const result = await service.refreshAccessToken('valid.token');
 
       expect(result.accessToken).toBe('signed.token');
+      expect(result.refreshToken).toBeDefined();
+      expect(mockSessionsService.rotateRefreshToken).toHaveBeenCalled();
       expect(result.payload).toEqual({
         _id: 'abc123',
         name: 'Juan',
@@ -184,22 +240,54 @@ describe('AuthService', () => {
         company: 'EmpresaX',
         tenantId: '000000',
         isSuperAdmin: false,
-        sid: 'sess1',
+        isTrial: false,
+        trialStartedAt: null,
+        trialEndsAt: null,
+        sid: '507f1f77bcf86cd799439011',
       });
-      expect(verifySpy).toHaveBeenCalledWith('valid.token', {
-        secret: 'secret',
-      });
+      expect(verifySpy).toHaveBeenCalledWith(
+        'valid.token',
+        expect.objectContaining({ secret: 'secret' }),
+      );
     });
 
     it('rechaza si la sesión no existe', async () => {
       jest
         .spyOn(jwtService, 'verify')
-        .mockReturnValue({ _id: 'abc123' } as any);
-      mockSessionsService.findActiveByRefreshHash.mockResolvedValue(null);
+        .mockReturnValue({
+          _id: 'abc123',
+          sid: '507f1f77bcf86cd799439011',
+        } as any);
+      mockSessionsService.findActiveById.mockResolvedValue(null);
 
       await expect(
         service.refreshAccessToken('valid.token'),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('revoca todas las sesiones si detecta reuso del refresh token', async () => {
+      const hash = crypto
+        .createHash('sha256')
+        .update('old.token')
+        .digest('hex');
+      jest
+        .spyOn(jwtService, 'verify')
+        .mockReturnValue({
+          _id: 'abc123',
+          sid: '507f1f77bcf86cd799439011',
+        } as any);
+      mockSessionsService.findActiveById.mockResolvedValue({
+        _id: '507f1f77bcf86cd799439011',
+        user: 'abc123',
+        isActive: true,
+        refreshToken: 'otro-hash-vigente',
+        usedRefreshTokens: [hash],
+      });
+
+      await expect(service.refreshAccessToken('old.token')).rejects.toThrow(
+        /reutilizaci/i,
+      );
+      expect(mockSessionsService.revokeByUser).toHaveBeenCalledWith('abc123');
     });
 
     it('rechaza y desactiva la sesión si el token expiró', async () => {
@@ -254,6 +342,239 @@ describe('AuthService', () => {
     });
   });
 
+  describe('bloqueo por intentos fallidos (security.*)', () => {
+    function mockFindOne(user: any) {
+      mockUserModel.findOne.mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(user),
+        }),
+      });
+    }
+
+    function policyValues(max: number, minutes: number) {
+      tenantConfigServiceMock.getPolicyValue.mockImplementation(
+        (_t: any, _c: any, key: string) => {
+          if (key === 'security.maxFailedAttempts') return Promise.resolve(max);
+          if (key === 'security.lockMinutes') return Promise.resolve(minutes);
+          return Promise.resolve(undefined);
+        },
+      );
+    }
+
+    function lastSet(): any {
+      const calls = mockUserModel.updateOne.mock.calls;
+      return calls[calls.length - 1][1].$set;
+    }
+
+    it('bloquea al EXCEDER el máximo (max=3, fallo 4º)', async () => {
+      mockFindOne({ ...userMock, failedLoginAttempts: 3 });
+      jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(false);
+      policyValues(3, 15);
+
+      await expect(
+        service.login({ email: 'juan@mail.com', password: 'x' }),
+      ).rejects.toThrow(/bloqueado/i);
+
+      const set = lastSet();
+      expect(set.isBlocked).toBe(true);
+      expect(set.blockedUntil).toBeInstanceOf(Date);
+      expect(set.failedLoginAttempts).toBe(0);
+    });
+
+    it('no bloquea si aún no excede (max=3, fallo 3º)', async () => {
+      mockFindOne({ ...userMock, failedLoginAttempts: 2 });
+      jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(false);
+      policyValues(3, 15);
+
+      await expect(
+        service.login({ email: 'juan@mail.com', password: 'x' }),
+      ).rejects.toThrow(/Credenciales|Creadenciales/i);
+
+      const set = lastSet();
+      expect(set.isBlocked).toBeUndefined();
+      expect(set.failedLoginAttempts).toBe(3);
+    });
+
+    it('maxFailedAttempts=0 = intentos ilimitados (no bloquea)', async () => {
+      mockFindOne({ ...userMock, failedLoginAttempts: 999 });
+      jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(false);
+      policyValues(0, 15);
+
+      await expect(
+        service.login({ email: 'juan@mail.com', password: 'x' }),
+      ).rejects.toThrow(/Credenciales|Creadenciales/i);
+
+      expect(lastSet().isBlocked).toBeUndefined();
+    });
+
+    it('lockMinutes=0 = bloqueo indefinido (blockedUntil null)', async () => {
+      mockFindOne({ ...userMock, failedLoginAttempts: 5 });
+      jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(false);
+      policyValues(3, 0);
+
+      await expect(
+        service.login({ email: 'juan@mail.com', password: 'x' }),
+      ).rejects.toThrow(/bloqueado/i);
+
+      const set = lastSet();
+      expect(set.isBlocked).toBe(true);
+      expect(set.blockedUntil).toBeNull();
+    });
+
+    it('usuario bloqueado con fecha futura no puede iniciar sesión', async () => {
+      const future = new Date(Date.now() + 10 * 60 * 1000);
+      mockFindOne({ ...userMock, isBlocked: true, blockedUntil: future });
+      const verifySpy = jest
+        .spyOn(encryptionService, 'verifyPassword')
+        .mockResolvedValue(true);
+
+      await expect(
+        service.login({ email: 'juan@mail.com', password: 'x' }),
+      ).rejects.toThrow(/bloqueado/i);
+      expect(verifySpy).not.toHaveBeenCalled();
+    });
+
+    it('bloqueo indefinido (sin fecha) permanece bloqueado', async () => {
+      mockFindOne({ ...userMock, isBlocked: true, blockedUntil: null });
+      jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(true);
+
+      await expect(
+        service.login({ email: 'juan@mail.com', password: 'x' }),
+      ).rejects.toThrow(/bloqueado/i);
+      expect(mockUserModel.updateOne).not.toHaveBeenCalled();
+    });
+
+    it('bloqueo con fecha expirada se limpia y permite iniciar sesión', async () => {
+      const past = new Date(Date.now() - 60 * 1000);
+      mockFindOne({ ...userMock, isBlocked: true, blockedUntil: past });
+      jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(true);
+
+      const result = await service.login({
+        email: 'juan@mail.com',
+        password: 'x',
+      });
+
+      expect(result.message).toBe('Login successful');
+      expect(mockUserModel.updateOne).toHaveBeenCalledWith(
+        { _id: 'abc123' },
+        expect.objectContaining({
+          $set: expect.objectContaining({ isBlocked: false }),
+        }),
+      );
+    });
+  });
+
+  describe('restricciones de login (empresa/prueba)', () => {
+    function mockFindOne(user: any) {
+      mockUserModel.findOne.mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(user),
+        }),
+      });
+    }
+
+    function mockCompanyOnce(company: any) {
+      mockCompanyModel.findOne.mockReturnValueOnce({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(company),
+        }),
+      });
+    }
+
+    it('bloquea el login si la empresa está bloqueada (indefinido)', async () => {
+      mockFindOne(userMock);
+      mockCompanyOnce({ _id: 'c1', isBlocked: true, blockedUntil: null });
+      const verifySpy = jest
+        .spyOn(encryptionService, 'verifyPassword')
+        .mockResolvedValue(true);
+
+      await expect(
+        service.login({ email: 'juan@mail.com', password: 'x' }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'COMPANY_BLOCKED' }),
+      });
+      expect(verifySpy).not.toHaveBeenCalled();
+    });
+
+    it('incluye `details.blockType` cuando la empresa está bloqueada temporalmente', async () => {
+      mockFindOne(userMock);
+      mockCompanyOnce({
+        _id: 'c1',
+        isBlocked: true,
+        blockedUntil: new Date(Date.now() + 60_000),
+      });
+
+      await expect(
+        service.login({ email: 'juan@mail.com', password: 'x' }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'COMPANY_BLOCKED',
+          errors: expect.arrayContaining([
+            expect.objectContaining({
+              details: expect.objectContaining({ blockType: 'temporary' }),
+            }),
+          ]),
+        }),
+      });
+    });
+
+    it('bloquea el login si el período de prueba expiró', async () => {
+      mockFindOne({
+        ...userMock,
+        isTrial: true,
+        trialEndsAt: new Date(Date.now() - 86_400_000),
+      });
+
+      await expect(
+        service.login({ email: 'juan@mail.com', password: 'x' }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'TRIAL_EXPIRED' }),
+      });
+    });
+
+    it('permite el login si la prueba sigue vigente', async () => {
+      mockFindOne({
+        ...userMock,
+        isTrial: true,
+        trialEndsAt: new Date(Date.now() + 86_400_000),
+      });
+      jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(true);
+
+      const result = await service.login({
+        email: 'juan@mail.com',
+        password: 'x',
+      });
+      expect(result.message).toBe('Login successful');
+    });
+
+    it('devuelve todos los motivos con precedencia empresa → usuario → prueba → inactivo', async () => {
+      mockFindOne({
+        ...userMock,
+        isActived: false,
+        isBlocked: true,
+        blockedUntil: null,
+        blockReason: 'manual',
+        isTrial: true,
+        trialEndsAt: new Date(Date.now() - 86_400_000),
+      });
+      mockCompanyOnce({ _id: 'c1', isBlocked: true, blockedUntil: null });
+
+      try {
+        await service.login({ email: 'juan@mail.com', password: 'x' });
+        fail('debía lanzar ForbiddenException');
+      } catch (error: any) {
+        const response = error.getResponse();
+        expect(response.code).toBe('COMPANY_BLOCKED');
+        expect(response.errors.map((item: any) => item.code)).toEqual([
+          'COMPANY_BLOCKED',
+          'USER_BLOCKED_INDEFINITE',
+          'TRIAL_EXPIRED',
+          'USER_INACTIVE',
+        ]);
+      }
+    });
+  });
+
   describe('refreshAccessToken errores', () => {
     it('rechaza si el usuario está inactivo o no existe', async () => {
       jest.spyOn(jwtService, 'verify').mockReturnValue({ _id: 'abc123' } as any);
@@ -274,18 +595,19 @@ describe('AuthService', () => {
   });
 
   describe('recoveryPassword', () => {
-    it('genera contraseña temporal, la actualiza y envía el correo', async () => {
+    it('genera token de un solo uso y envía el correo (respuesta genérica)', async () => {
       const userDoc = {
         _id: 'abc123',
         email: 'juan@mail.com',
         name: 'Juan',
         lastName: 'Pérez',
+        company: 'EmpresaX',
+        tenantId: '000000',
+        save: jest.fn().mockResolvedValue(undefined),
       };
       mockUserModel.findOne.mockReturnValue({
         exec: jest.fn().mockResolvedValue(userDoc),
       });
-      mockUserModel.findByIdAndUpdate.mockResolvedValue(userDoc);
-      jest.spyOn(encryptionService, 'hashPassword').mockResolvedValue('hashed');
       jest.spyOn(mailServiceMock, 'sendEmail').mockResolvedValue(undefined);
 
       const result = await service.recoveryPassword(
@@ -293,33 +615,26 @@ describe('AuthService', () => {
         'https://app.bponet.com.co',
       );
 
-      expect(mockUserModel.findByIdAndUpdate).toHaveBeenCalledWith(
-        'abc123',
-        expect.objectContaining({ isNewUser: true }),
+      expect(userDoc.passwordResetToken).toBeDefined();
+      expect(userDoc.passwordResetExpires).toBeInstanceOf(Date);
+      expect(userDoc.save).toHaveBeenCalled();
+      expect(mailServiceMock.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ template: 'recovery' }),
       );
-      expect(mailServiceMock.sendEmail).toHaveBeenCalled();
-      expect(result.message).toBe('Contraseña temporal enviada por correo');
+      expect(result.message).toMatch(/Si el correo está registrado/i);
     });
 
-    it('lanza BadRequest si el usuario no existe', async () => {
+    it('responde genérico (sin revelar) si el usuario no existe', async () => {
       mockUserModel.findOne.mockReturnValue({
         exec: jest.fn().mockResolvedValue(null),
       });
 
-      await expect(
-        service.recoveryPassword({ email: 'x@y.com' }, ''),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('lanza BadRequest si no se pudo actualizar la contraseña', async () => {
-      mockUserModel.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({ _id: 'abc123' }),
-      });
-      mockUserModel.findByIdAndUpdate.mockResolvedValue(null);
-
-      await expect(
-        service.recoveryPassword({ email: 'juan@mail.com' }, ''),
-      ).rejects.toThrow(BadRequestException);
+      const result = await service.recoveryPassword(
+        { email: 'x@y.com' },
+        '',
+      );
+      expect(result.message).toMatch(/Si el correo está registrado/i);
+      expect(mailServiceMock.sendEmail).not.toHaveBeenCalled();
     });
   });
 
@@ -382,6 +697,7 @@ describe('AuthService', () => {
         passwordResetToken: 'token',
         passwordResetExpires: new Date(),
         isNewUser: true,
+        mustChangePassword: true,
         save: jest.fn().mockResolvedValue(undefined),
       };
       mockUserModel.findOne.mockResolvedValue(user);
@@ -393,6 +709,7 @@ describe('AuthService', () => {
 
       expect(user.password).toBe('new-pass');
       expect(user.isNewUser).toBe(false);
+      expect(user.mustChangePassword).toBe(false);
       expect(user.save).toHaveBeenCalled();
       expect(result.message).toContain('exitosamente');
     });
@@ -403,6 +720,92 @@ describe('AuthService', () => {
       await expect(
         service.setPasswordWithToken({ token: 'raw', password: 'x' }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('notificación de nuevo inicio de sesión', () => {
+    const meta = { os: 'Linux', browser: 'Chrome', user_agent: 'UA' };
+
+    function policyValues(values: Record<string, any>) {
+      tenantConfigServiceMock.getPolicyValue.mockImplementation(
+        (_t: any, _c: any, key: string) => Promise.resolve(values[key]),
+      );
+    }
+
+    it('envía el correo con plantilla session si las tres políticas están activas', async () => {
+      policyValues({
+        'preferences.notifications': true,
+        'preferences.notifications.newLogin': true,
+        'channels.email.enabled': true,
+      });
+
+      await (service as any).notifyNewLogin(userMock, meta, '127.0.0.1');
+
+      expect(mailServiceMock.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: userMock.email,
+          template: 'session',
+        }),
+      );
+    });
+
+    it('NO envía si features.notificaciones está desactivada', async () => {
+      policyValues({
+        'features.notificaciones': false,
+        'preferences.notifications': true,
+        'preferences.notifications.newLogin': true,
+        'channels.email.enabled': true,
+      });
+
+      await (service as any).notifyNewLogin(userMock, meta, '127.0.0.1');
+
+      expect(mailServiceMock.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('NO envía si preferences.notifications está desactivada', async () => {
+      policyValues({
+        'preferences.notifications': false,
+        'preferences.notifications.newLogin': true,
+        'channels.email.enabled': true,
+      });
+
+      await (service as any).notifyNewLogin(userMock, meta, '127.0.0.1');
+
+      expect(mailServiceMock.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('NO envía si preferences.notifications.newLogin está desactivada', async () => {
+      policyValues({
+        'preferences.notifications': true,
+        'preferences.notifications.newLogin': false,
+        'channels.email.enabled': true,
+      });
+
+      await (service as any).notifyNewLogin(userMock, meta, '127.0.0.1');
+
+      expect(mailServiceMock.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('NO envía si channels.email.enabled está desactivada', async () => {
+      policyValues({
+        'preferences.notifications': true,
+        'preferences.notifications.newLogin': true,
+        'channels.email.enabled': false,
+      });
+
+      await (service as any).notifyNewLogin(userMock, meta, '127.0.0.1');
+
+      expect(mailServiceMock.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('NO envía (fail-closed) si falla la consulta de la política', async () => {
+      tenantConfigServiceMock.getPolicyValue.mockRejectedValue(
+        new Error('db down'),
+      );
+
+      await (service as any).notifyNewLogin(userMock, meta, '127.0.0.1');
+
+      expect(mailServiceMock.sendEmail).not.toHaveBeenCalled();
     });
   });
 });

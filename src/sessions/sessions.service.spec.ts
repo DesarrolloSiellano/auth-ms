@@ -25,12 +25,15 @@ describe('SessionsService', () => {
   mockModel.find = jest.fn();
   mockModel.countDocuments = jest.fn();
 
+  const mockUserModel: any = { findById: jest.fn() };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SessionsService,
         { provide: getModelToken('Session'), useValue: mockModel },
+        { provide: getModelToken('User'), useValue: mockUserModel },
       ],
     }).compile();
 
@@ -98,6 +101,9 @@ describe('SessionsService', () => {
   });
 
   it('revokeByUser desactiva todas y devuelve el total', async () => {
+    (mockUserModel.findById as jest.Mock).mockReturnValue(
+      queryChain({ isSuperAdmin: false }),
+    );
     mockModel.find.mockReturnValue(queryChain([{ _id: 's1' }, { _id: 's2' }]));
     mockModel.updateMany.mockReturnValue(queryChain({ modifiedCount: 2 }));
 
@@ -105,9 +111,38 @@ describe('SessionsService', () => {
 
     expect(revoked).toBe(2);
     expect(mockModel.updateMany).toHaveBeenCalledWith(
-      { user: 'u1', isActive: true, company: 'EmpresaX' },
+      {
+        user: 'u1',
+        isActive: true,
+        company: 'EmpresaX',
+        isSuperAdmin: { $ne: true },
+      },
       { $set: { isActive: false } },
     );
+  });
+
+  it('revokeByUser lanza 403 si el objetivo es SuperAdmin (admin de empresa)', async () => {
+    (mockUserModel.findById as jest.Mock).mockReturnValue(
+      queryChain({ isSuperAdmin: true }),
+    );
+
+    await expect(service.revokeByUser('u1', 'EmpresaX')).rejects.toThrow(
+      'No puedes revocar sesiones de un SuperAdmin',
+    );
+    expect(mockModel.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('findActiveSessions excluye SuperAdmins para un admin de empresa', async () => {
+    mockModel.find.mockReturnValue(queryChain([]));
+    mockModel.countDocuments.mockReturnValue(queryChain(0));
+
+    await service.findActiveSessions({ company: 'EmpresaX', from: 0, limit: 10 });
+
+    expect(mockModel.find).toHaveBeenCalledWith({
+      isActive: true,
+      company: 'EmpresaX',
+      isSuperAdmin: { $ne: true },
+    });
   });
 
   it('findActiveSessions filtra por empresa y pagina', async () => {

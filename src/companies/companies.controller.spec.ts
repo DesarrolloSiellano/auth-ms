@@ -63,9 +63,21 @@ describe('CompaniesController', () => {
     ).toBe('page');
   });
 
-  it('findByAutoComplete delega (abierto a usuarios)', () => {
+  it('findByAutoComplete delega (admin)', () => {
     serviceMock.findByAutoComplete.mockReturnValue('ac');
-    expect(controller.findByAutoComplete('emp')).toBe('ac');
+    expect(
+      controller.findByAutoComplete('emp', {
+        user: { isAdmin: true, isSuperAdmin: false },
+      }),
+    ).toBe('ac');
+  });
+
+  it('findByAutoComplete rechaza usuario no-admin', () => {
+    expect(() =>
+      controller.findByAutoComplete('emp', {
+        user: { isAdmin: false, isSuperAdmin: false },
+      }),
+    ).toThrow(ForbiddenException);
   });
 
   it('findOne delega', () => {
@@ -83,11 +95,6 @@ describe('CompaniesController', () => {
   it('remove delega', () => {
     serviceMock.remove.mockReturnValue('del');
     expect(controller.remove('c1', superAdminReq)).toBe('del');
-  });
-
-  it('tcpPatternsDoc devuelve documentación', () => {
-    const result = controller.tcpPatternsDoc();
-    expect(result.patterns.length).toBeGreaterThan(0);
   });
 
   it('msCreate delega', () => {

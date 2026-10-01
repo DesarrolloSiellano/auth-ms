@@ -150,4 +150,63 @@ describe('CompaniesService', () => {
       await expect(service.remove('c1')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('block/unblock', () => {
+    function lastSet() {
+      const calls = mockModel.findByIdAndUpdate.mock.calls;
+      return calls[calls.length - 1][1].$set;
+    }
+
+    it('bloquea con fecha (temporal) y motivo', async () => {
+      mockModel.findByIdAndUpdate.mockReturnValue(
+        leanExec({ _id: 'c1', isBlocked: true }),
+      );
+      const until = new Date(Date.now() + 60_000).toISOString();
+
+      const result = await service.block('c1', { reason: 'mora', until });
+
+      expect(mockModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        'c1',
+        expect.objectContaining({
+          $set: expect.objectContaining({
+            isBlocked: true,
+            blockReason: 'mora',
+          }),
+        }),
+        { new: true },
+      );
+      expect(lastSet().blockedUntil).toBeInstanceOf(Date);
+      expect(result.message).toContain('blocked');
+    });
+
+    it('bloquea sin fecha (indefinido)', async () => {
+      mockModel.findByIdAndUpdate.mockReturnValue(
+        leanExec({ _id: 'c1', isBlocked: true, blockedUntil: null }),
+      );
+
+      await service.block('c1', {});
+
+      expect(lastSet().blockedUntil).toBeNull();
+    });
+
+    it('lanza NotFound al bloquear una compañía inexistente', async () => {
+      mockModel.findByIdAndUpdate.mockReturnValue(leanExec(null));
+      await expect(service.block('c1', {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('desbloquea la compañía', async () => {
+      mockModel.findByIdAndUpdate.mockReturnValue(
+        leanExec({ _id: 'c1', isBlocked: false }),
+      );
+
+      const result = await service.unblock('c1');
+
+      expect(lastSet()).toMatchObject({
+        isBlocked: false,
+        blockReason: null,
+        blockedUntil: null,
+      });
+      expect(result.message).toContain('unblocked');
+    });
+  });
 });

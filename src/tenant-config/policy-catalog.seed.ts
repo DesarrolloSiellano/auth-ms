@@ -11,7 +11,42 @@ type SeedPolicy = Pick<
   | 'unit'
   | 'order'
   | 'isSystem'
+  | 'options'
 >;
+
+export const TIMEZONE_OPTIONS = [
+  { label: 'Colombia (America/Bogota)', value: 'America/Bogota' },
+  { label: 'México (America/Mexico_City)', value: 'America/Mexico_City' },
+  { label: 'Perú (America/Lima)', value: 'America/Lima' },
+  { label: 'Chile (America/Santiago)', value: 'America/Santiago' },
+  {
+    label: 'Argentina (America/Argentina/Buenos_Aires)',
+    value: 'America/Argentina/Buenos_Aires',
+  },
+  { label: 'Brasil (America/Sao_Paulo)', value: 'America/Sao_Paulo' },
+  { label: 'Ecuador (America/Guayaquil)', value: 'America/Guayaquil' },
+  { label: 'Venezuela (America/Caracas)', value: 'America/Caracas' },
+  { label: 'Panamá (America/Panama)', value: 'America/Panama' },
+  {
+    label: 'Costa Rica (America/Costa_Rica)',
+    value: 'America/Costa_Rica',
+  },
+  { label: 'Nueva York (America/New_York)', value: 'America/New_York' },
+  { label: 'Los Ángeles (America/Los_Angeles)', value: 'America/Los_Angeles' },
+  { label: 'España (Europe/Madrid)', value: 'Europe/Madrid' },
+  { label: 'UTC', value: 'UTC' },
+];
+
+export const LOCALE_OPTIONS = [
+  { label: 'Español (Colombia) - es-CO', value: 'es-CO' },
+  { label: 'Español (México) - es-MX', value: 'es-MX' },
+  { label: 'Español (Argentina) - es-AR', value: 'es-AR' },
+  { label: 'Español (Chile) - es-CL', value: 'es-CL' },
+  { label: 'Español (Perú) - es-PE', value: 'es-PE' },
+  { label: 'Español (España) - es-ES', value: 'es-ES' },
+  { label: 'Inglés (EE. UU.) - en-US', value: 'en-US' },
+  { label: 'Portugués (Brasil) - pt-BR', value: 'pt-BR' },
+];
 
 const num = (
   key: string,
@@ -52,11 +87,12 @@ const bool = (
   isSystem: true,
 });
 
-const text = (
+const select = (
   key: string,
   label: string,
   group: string,
   defaultValue: string,
+  options: { label: string; value: any }[],
   order: number,
   description = '',
 ): SeedPolicy => ({
@@ -64,8 +100,9 @@ const text = (
   label,
   description,
   group,
-  type: 'text',
+  type: 'select',
   defaultValue,
+  options,
   unit: '',
   order,
   isSystem: true,
@@ -77,8 +114,24 @@ const text = (
  */
 export const POLICY_CATALOG_SEED: SeedPolicy[] = [
   // General
-  text('general.timezone', 'Zona horaria', 'general', 'America/Bogota', 1),
-  text('general.locale', 'Idioma/Región', 'general', 'es-CO', 2),
+  select(
+    'general.timezone',
+    'Zona horaria',
+    'general',
+    'America/Bogota',
+    TIMEZONE_OPTIONS,
+    1,
+    'Zona horaria para visualización de fechas (auditoría, correos, reportes).',
+  ),
+  select(
+    'general.locale',
+    'Idioma/Región',
+    'general',
+    'es-CO',
+    LOCALE_OPTIONS,
+    2,
+    'Locale para visualización de fechas.',
+  ),
 
   // Canales
   bool('channels.sms.enabled', 'SMS habilitado', 'channels', true, 10),
@@ -222,6 +275,15 @@ export const POLICY_CATALOG_SEED: SeedPolicy[] = [
   // Límites
   num('limits.maxUsers', 'Máx. usuarios', 'limits', 0, 50, '0 = ilimitado'),
   num('limits.maxStorageMb', 'Máx. almacenamiento', 'limits', 0, 52, '0 = ilimitado', 'MB'),
-  num('limits.maxAgents', 'Máx. agentes', 'limits', 50, 53),
-  num('limits.maxChatbotFlows', 'Máx. flujos de chatbot', 'limits', 20, 54),
+  // Tope por rol. Se crea una política `limits.roles.<CODE>` por cada rol.
+  num('limits.roles.AGE', 'Máx. agentes', 'limits', 50, 53, '0 = ilimitado'),
+  num('limits.maxChatbotFlows', 'Máx. flujos de chatbot', 'limits', 20, 55),
+  num(
+    'limits.trialDays',
+    'Días de prueba',
+    'limits',
+    7,
+    56,
+    'Días del período de prueba (>0). Por defecto 7, igual que TEST_USER_DAYS',
+  ),
 ];

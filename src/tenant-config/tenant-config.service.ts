@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -22,6 +23,13 @@ import {
   UpdatePolicyDefinitionDto,
 } from './dto/policy-definition.dto';
 import { PatchTenantConfigValuesDto } from './dto/tenant-config.dto';
+
+/**
+ * Políticas obsoletas que deben eliminarse del catálogo y de los valores de
+ * los tenants al arrancar (p. ej. `limits.maxAgents`, reemplazada por
+ * `limits.roles.AGE`).
+ */
+const DEPRECATED_POLICY_KEYS = ['limits.maxAgents'];
 
 @Injectable()
 export class TenantConfigService {
@@ -75,17 +83,75 @@ export class TenantConfigService {
       if (exists) continue;
       await this.policyDefinitionModel.create({
         ...seed,
-        options: [],
+        options: seed.options ?? [],
         min: null,
         max: null,
         isActive: true,
       });
       created += 1;
     }
-    if (created > 0) {
-      this.logger.log(`Catálogo de políticas sembrado: ${created} nuevas.`);
+    const updated = await this.syncSystemCatalog();
+    const removed = await this.purgeDeprecatedCatalog();
+    if (created > 0 || updated > 0 || removed > 0) {
+      this.logger.log(
+        `Catálogo de políticas: ${created} nuevas, ${updated} actualizadas, ${removed} obsoletas eliminadas.`,
+      );
     }
     return created;
+  }
+
+  /**
+   * Sincroniza metadatos de las definiciones de sistema existentes
+   * (`type`, `options`, `defaultValue`, `label`, `order`, …). No modifica
+   * `isActive` ni crea definiciones (eso lo hace `seedDefaultCatalog`).
+   * Necesario porque el seed es create-only y las políticas pueden cambiar
+   * de forma (p. ej. `general.timezone` de texto a select).
+   */
+  async syncSystemCatalog(): Promise<number> {
+    let updated = 0;
+    for (const seed of POLICY_CATALOG_SEED) {
+      if (!seed.isSystem) continue;
+      const result = await this.policyDefinitionModel
+        .updateOne(
+          { key: seed.key, isSystem: true },
+          {
+            $set: {
+              label: seed.label,
+              description: seed.description ?? '',
+              group: seed.group,
+              type: seed.type,
+              defaultValue: seed.defaultValue,
+              options: seed.options ?? [],
+              unit: seed.unit ?? '',
+              order: seed.order,
+            },
+          },
+        )
+        .exec();
+      if (result.modifiedCount > 0) updated += 1;
+    }
+    return updated;
+  }
+
+  /**
+   * Elimina del catálogo las políticas obsoletas y limpia sus valores de la
+   * configuración de todos los tenants. Idempotente.
+   */
+  async purgeDeprecatedCatalog(): Promise<number> {
+    let removed = 0;
+    for (const key of DEPRECATED_POLICY_KEYS) {
+      const result = await this.policyDefinitionModel
+        .deleteOne({ key })
+        .exec();
+      if (result.deletedCount > 0) removed += 1;
+      await this.tenantConfigModel
+        .updateMany(
+          { [`values.${key}`]: { $exists: true } },
+          { $unset: { [`values.${key}`]: '' } },
+        )
+        .exec();
+    }
+    return removed;
   }
 
   async createDefinition(dto: CreatePolicyDefinitionDto) {
@@ -125,13 +191,24 @@ export class TenantConfigService {
   }
 
   async removeDefinition(key: string) {
+    const existing = await this.policyDefinitionModel
+      .findOne({ key })
+      .lean()
+      .exec();
+    if (!existing) {
+      throw new NotFoundException(`Policy definition "${key}" not found`);
+    }
+    // Las políticas del sistema no se pueden eliminar (solo las nuevas).
+    if (existing.isSystem) {
+      throw new ForbiddenException(
+        `La política de sistema "${key}" no se puede eliminar`,
+      );
+    }
+
     const deleted = await this.policyDefinitionModel
       .findOneAndDelete({ key })
       .lean()
       .exec();
-    if (!deleted) {
-      throw new NotFoundException(`Policy definition "${key}" not found`);
-    }
     return {
       message: 'Policy definition removed successfully',
       data: deleted,
@@ -205,12 +282,67 @@ export class TenantConfigService {
       .findOne({ key })
       .lean()
       .exec();
+    // Busca por tenantId y, si no hay config, cae a company. Se buscan ambas
+    // claves juntas para tolerar usuarios cuyo `tenantId` no coincide con el
+    // `_id` de la empresa (p. ej. nombre o valor legado) y evitar caer al
+    // default del catálogo.
+    const or: any[] = [];
+    if (tenantId) or.push({ tenantId });
+    if (company) or.push({ company });
+    const config =
+      or.length > 0
+        ? await this.tenantConfigModel.findOne({ $or: or }).lean().exec()
+        : null;
+    const value = config?.values?.[key];
+    return value !== undefined ? value : def?.defaultValue;
+  }
+
+  /**
+   * Indica si un valor fue fijado explícitamente para el tenant (no es
+   * default del catálogo). Útil para respetar valores legados al introducir
+   * nuevas claves (p. ej. `limits.roles.<CODE>`).
+   */
+  async getConfiguredValue(
+    tenantId: string | undefined,
+    company: string | undefined,
+    key: string,
+  ): Promise<{ isSet: boolean; value: any }> {
     const query = tenantId ? { tenantId } : company ? { company } : null;
     const config = query
       ? await this.tenantConfigModel.findOne(query).lean().exec()
       : null;
     const value = config?.values?.[key];
-    return value !== undefined ? value : def?.defaultValue;
+    return { isSet: value !== undefined, value };
+  }
+
+  /**
+   * Registra (idempotente) la definición de política `limits.roles.<CODE>`
+   * para un rol. Necesario porque `sanitizeValues` ignora claves sin
+   * definición y los roles se crean dinámicamente. 0 = ilimitado.
+   */
+  async ensureRoleLimitPolicy(code: string, label?: string): Promise<boolean> {
+    const normalized = String(code || '').trim().toUpperCase();
+    if (!normalized) return false;
+    const key = `limits.roles.${normalized}`;
+    const exists = await this.policyDefinitionModel
+      .findOne({ key })
+      .lean()
+      .exec();
+    if (exists) return false;
+    await this.policyDefinitionModel.create({
+      key,
+      label: label ? `Máx. ${label}` : `Máx. usuarios con rol ${normalized}`,
+      description: '0 = ilimitado',
+      group: 'limits',
+      type: 'number',
+      defaultValue: 0,
+      unit: '',
+      order: 60,
+      isActive: true,
+      isSystem: false,
+    });
+    this.logger.log(`Política de límite de rol creada: ${key}.`);
+    return true;
   }
 
   async listConfigs() {

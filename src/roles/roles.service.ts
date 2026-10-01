@@ -1,13 +1,19 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Rol } from './entities/role.entity';
+import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 
 @Injectable()
 export class RolesService {
-  constructor(@InjectModel('Rol') private readonly rolModel: Model<Rol>) {}
+  private readonly logger = new Logger(RolesService.name);
+
+  constructor(
+    @InjectModel('Rol') private readonly rolModel: Model<Rol>,
+    private readonly tenantConfigService: TenantConfigService,
+  ) {}
 
   async create(createRoleDto: CreateRoleDto) {
     const newRole = new this.rolModel(createRoleDto);
@@ -16,6 +22,9 @@ export class RolesService {
     if (!result) {
       throw new NotFoundException('Role not created');
     }
+
+    // Registra la política de tope del rol (`limits.roles.<CODE>`).
+    await this.ensureRoleLimitPolicy(result.codeRol, result.name);
 
     return {
       message: 'Role created successfully',
@@ -107,5 +116,20 @@ export class RolesService {
       throw new NotFoundException(`Role with ID ${id} not found`);
     }
     return deletedRole;
+  }
+
+  /** Alta idempotente de la política de tope `limits.roles.<CODE>` del rol. */
+  private async ensureRoleLimitPolicy(
+    codeRol?: string,
+    label?: string,
+  ): Promise<void> {
+    if (!codeRol) return;
+    try {
+      await this.tenantConfigService.ensureRoleLimitPolicy(codeRol, label);
+    } catch (error: any) {
+      this.logger.warn(
+        `No se pudo registrar limits.roles.${codeRol}: ${error?.message}`,
+      );
+    }
   }
 }

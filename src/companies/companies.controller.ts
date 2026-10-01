@@ -4,15 +4,18 @@ import {
   Post,
   Body,
   Put,
+  Patch,
   Param,
   Delete,
   Query,
   UseGuards,
   Req,
+  Optional,
   ForbiddenException,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
+import { AuditService } from 'src/audit/audit.service';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
@@ -32,7 +35,28 @@ import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
 @Controller('companies')
 @UseGuards(AuthGuard('jwt'), ThrottlerHybridGuard)
 export class CompaniesController {
-  constructor(private readonly companiesService: CompaniesService) {}
+  constructor(
+    private readonly companiesService: CompaniesService,
+    @Optional() private readonly auditService?: AuditService,
+  ) {}
+
+  private audit(
+    req: any,
+    action: string,
+    detail: Record<string, any>,
+  ): void {
+    this.auditService?.logAsync({
+      action,
+      category: 'config',
+      status: 'success',
+      userId: String(req?.user?._id || ''),
+      email: req?.user?.email,
+      company: req?.user?.company,
+      tenantId: req?.user?.tenantId,
+      ip: req?.ip,
+      detail,
+    });
+  }
 
   /** La gestión de compañías es exclusiva de SuperAdmin. */
   private assertSuperAdmin(req: any): void {
@@ -40,6 +64,13 @@ export class CompaniesController {
       throw new ForbiddenException(
         'Solo un SuperAdmin puede gestionar compañías',
       );
+    }
+  }
+
+  /** Autocompletado de empresas para la UI: admin de empresa o SuperAdmin. */
+  private assertAdmin(req: any): void {
+    if (!req?.user?.isAdmin && !req?.user?.isSuperAdmin) {
+      throw new ForbiddenException('Se requieren permisos de administrador');
     }
   }
 
@@ -141,7 +172,8 @@ export class CompaniesController {
       },
     },
   })
-  findByAutoComplete(@Query('name') name?: string) {
+  findByAutoComplete(@Query('name') name?: string, @Req() req?: any) {
+    this.assertAdmin(req);
     return this.companiesService.findByAutoComplete(name);
   }
 
@@ -208,6 +240,34 @@ export class CompaniesController {
   ) {
     this.assertSuperAdmin(req);
     return this.companiesService.update(id, updateCompanyDto);
+  }
+
+  @Patch(':id/block')
+  @UseGuards(ValidateObjectIdGuard)
+  @ApiOperation({
+    summary: 'Bloquear una compañía (SuperAdmin)',
+    description:
+      'Todos los usuarios de la compañía no podrán iniciar sesión. Sin `until` = indefinido.',
+  })
+  async block(
+    @Param('id') id: string,
+    @Body() body: { reason?: string; until?: string },
+    @Req() req: any,
+  ) {
+    this.assertSuperAdmin(req);
+    const result = await this.companiesService.block(id, body || {});
+    this.audit(req, 'company.blocked', { companyId: id, ...body });
+    return result;
+  }
+
+  @Patch(':id/unblock')
+  @UseGuards(ValidateObjectIdGuard)
+  @ApiOperation({ summary: 'Desbloquear una compañía (SuperAdmin)' })
+  async unblock(@Param('id') id: string, @Req() req: any) {
+    this.assertSuperAdmin(req);
+    const result = await this.companiesService.unblock(id);
+    this.audit(req, 'company.unblocked', { companyId: id });
+    return result;
   }
 
   @Delete(':id')
@@ -277,161 +337,16 @@ export class CompaniesController {
     return this.companiesService.remove(id);
   }
 
-  @Post('tcp-docs/message-patterns')
-  @ApiOperation({
-    summary:
-      '[SOLO DOCUMENTACIÓN] Patrones TCP soportados por CompaniesService',
-    description: `
-Este endpoint EXCLUSIVAMENTE documenta los comandos TCP soportados por el microservicio para integración entre servicios.  
-**No enviar datos reales aquí; la comunicación real es por sockets TCP.**
+  @MessagePattern({ cmd: 'blockCompany' })
+  msBlock(@Payload() payload: any) {
+    return this.companiesService.block(payload?.id, {
+      reason: payload?.reason,
+      until: payload?.until,
+    });
+  }
 
-**Autenticación entre servicios (obligatoria):** todo payload TCP debe incluir
-\`serviceKey\` con el valor de \`SERVICE_API_KEY\`. Los handlers que antes recibían
-una primitiva (\`id\`) ahora reciben \`{ serviceKey, id }\`.
-
-Ejemplos de uso del decorador @MessagePattern en NestJS:
-\`@MessagePattern({ cmd: 'createCompany' })\`
-    `,
-  })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Documentación de patrones TCP disponible en este microservicio',
-    schema: {
-      example: {
-        message: 'Comandos TCP disponibles en companies',
-        patterns: [
-          {
-            command: 'createCompany',
-            description:
-              'Crea una compañía. Payload: CreateCompanyDto. Devuelve objeto de creación.',
-            payloadExample: {
-              name: 'Compañía Ejemplar S.A.',
-              legalRepresentative: 'Juan Pérez',
-              ruc: '1234567890',
-              address: 'Calle 123 #45-67, Ciudad',
-              phone: '+57 311 1234567',
-              email: 'contacto@compania.com',
-              web: 'https://www.compania.com',
-              logo: 'https://www.compania.com/logo.png',
-              isActive: true,
-              created: '2025-09-11T14:30:00Z',
-              modified: '2025-09-11T14:30:00Z',
-            },
-            responseExample: {
-              message: 'Company created successfully',
-              statusCode: 201,
-              status: 'Success',
-              data: {
-                /* ...estructura compañía creada... */
-              },
-              meta: { totalData: 1, createdAt: '2025-09-11T14:30:00Z' },
-            },
-          },
-          {
-            command: 'findAllCompanies',
-            description: 'Trae todas las compañías. Payload: ninguno.',
-            responseExample: {
-              message: 'find all companies',
-              statusCode: 200,
-              status: 'Success',
-              data: [
-                /* ...array de compañías... */
-              ],
-              meta: { totalData: 5 },
-            },
-          },
-          {
-            command: 'findOneCompany',
-            description: 'Busca una compañía por ID. Payload: id:string.',
-            payloadExample: { id: 'id-compania' },
-          },
-          {
-            command: 'updateCompany',
-            description:
-              'Actualiza una compañía. Payload: { id: string, updateCompanyDto: UpdateCompanyDto }.',
-            payloadExample: {
-              id: 'id-compania',
-              updateCompanyDto: {
-                /* ...campos de actualización... */
-              },
-            },
-          },
-          {
-            command: 'removeCompany',
-            description: 'Elimina una compañía. Payload: id:string.',
-            payloadExample: { id: 'id-compania' },
-          },
-        ],
-      },
-    },
-  })
-  tcpPatternsDoc() {
-    return {
-      message: 'Comandos TCP disponibles en companies',
-      patterns: [
-        {
-          command: 'createCompany',
-          description:
-            'Crea una compañía. Payload: CreateCompanyDto. Devuelve objeto de creación.',
-          payloadExample: {
-            name: 'Compañía Ejemplar S.A.',
-            legalRepresentative: 'Juan Pérez',
-            ruc: '1234567890',
-            address: 'Calle 123 #45-67, Ciudad',
-            phone: '+57 311 1234567',
-            email: 'contacto@compania.com',
-            web: 'https://www.compania.com',
-            logo: 'https://www.compania.com/logo.png',
-            isActive: true,
-            created: '2025-09-11T14:30:00Z',
-            modified: '2025-09-11T14:30:00Z',
-          },
-          responseExample: {
-            message: 'Company created successfully',
-            statusCode: 201,
-            status: 'Success',
-            data: {
-              /* ...estructura compañía creada... */
-            },
-            meta: { totalData: 1, createdAt: '2025-09-11T14:30:00Z' },
-          },
-        },
-        {
-          command: 'findAllCompanies',
-          description: 'Trae todas las compañías. Payload: ninguno.',
-          responseExample: {
-            message: 'find all companies',
-            statusCode: 200,
-            status: 'Success',
-            data: [
-              /* ...array de compañías... */
-            ],
-            meta: { totalData: 5 },
-          },
-        },
-        {
-          command: 'findOneCompany',
-          description: 'Busca una compañía por ID. Payload: id:string.',
-          payloadExample: { id: 'id-compania' },
-        },
-        {
-          command: 'updateCompany',
-          description:
-            'Actualiza una compañía. Payload: { id: string, updateCompanyDto: UpdateCompanyDto }.',
-          payloadExample: {
-            id: 'id-compania',
-            updateCompanyDto: {
-              /* ...campos de actualización... */
-            },
-          },
-        },
-        {
-          command: 'removeCompany',
-          description: 'Elimina una compañía. Payload: id:string.',
-          payloadExample: { id: 'id-compania' },
-        },
-      ],
-    };
+  @MessagePattern({ cmd: 'unblockCompany' })
+  msUnblock(@Payload() payload: any) {
+    return this.companiesService.unblock(payload?.id);
   }
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UserAdminService } from './user-admin.service';
+import { UserLimitsService } from './user-limits.service';
 import { UsersController } from './users.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UserSchema } from './entities/user.entity';
@@ -13,6 +14,7 @@ import { SessionsModule } from 'src/sessions/sessions.module';
   providers: [
     UsersService,
     UserAdminService,
+    UserLimitsService,
     MailService,
     ServiceOrJwtGuard,
   ],
@@ -20,6 +22,6 @@ import { SessionsModule } from 'src/sessions/sessions.module';
     MongooseModule.forFeature([{ name: 'User', schema: UserSchema }]),
     SessionsModule,
   ],
-  exports: [UsersService, UserAdminService],
+  exports: [UsersService, UserAdminService, UserLimitsService],
 })
 export class UsersModule {}

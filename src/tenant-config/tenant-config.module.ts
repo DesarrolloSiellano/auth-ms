@@ -9,6 +9,8 @@ import {
 } from './entities/tenant-usage.entity';
 import { TenantConfigController } from './tenant-config.controller';
 import { TenantConfigService } from './tenant-config.service';
+import { FeaturePolicyService } from 'src/core/services/feature-policy.service';
+import { LocaleService } from 'src/core/services/locale.service';
 
 @Global()
 @Module({
@@ -21,7 +23,7 @@ import { TenantConfigService } from './tenant-config.service';
     ]),
   ],
   controllers: [TenantConfigController],
-  providers: [TenantConfigService],
-  exports: [TenantConfigService],
+  providers: [TenantConfigService, FeaturePolicyService, LocaleService],
+  exports: [TenantConfigService, FeaturePolicyService, LocaleService],
 })
 export class TenantConfigModule {}

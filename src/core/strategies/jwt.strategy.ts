@@ -20,18 +20,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       secretOrKey: configService.getOrThrow('JWT_SECRET'),
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      algorithms: ['HS256'],
+      issuer: configService.get<string>('JWT_ISSUER', 'bponet-auth'),
+      audience: configService.get<string>('JWT_AUDIENCE', 'bponet-apps'),
     });
   }
 
   async validate(payload: JwtPayload): Promise<User> {
-    const { _id } = payload;
+    const { _id, sid } = payload;
+
+    // Fail-closed: todo token debe referenciar una sesión revocable.
+    if (!sid) {
+      throw new UnauthorizedException('Sesión no válida');
+    }
 
     // Revocación inmediata: si el token referencia una sesión, debe seguir activa.
-    if (payload.sid) {
-      const active = await this.sessionsService.isSessionActive(payload.sid);
-      if (!active) {
-        throw new UnauthorizedException('Sesión revocada o expirada');
-      }
+    const active = await this.sessionsService.isSessionActive(sid);
+    if (!active) {
+      throw new UnauthorizedException('Sesión revocada o expirada');
     }
 
     const user = await this.userModel.findById(_id).lean().exec();

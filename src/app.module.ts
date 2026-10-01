@@ -1,8 +1,10 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import * as path from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { TcpDocsController } from './core/controllers/tcp-docs.controller';
+import { RestDocsController } from './core/controllers/rest-docs.controller';
 
 import { ConfigModule } from '@nestjs/config';
 
@@ -24,7 +26,6 @@ import { AuditModule } from './audit/audit.module';
 import { ReportsModule } from './reports/reports.module';
 import { LoggerModule } from 'nestjs-pino';
 import { envValidationSchema } from './core/config/env.validation';
-import { TenantMiddleware } from './core/database/tenant.middleware';
 import { IdempotencyModule } from './core/idempotency/idempotency.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { APP_GUARD } from '@nestjs/core';
@@ -32,7 +33,10 @@ import { ResponseInterceptor } from './core/interceptors/response.interceptor';
 import { MustChangePasswordInterceptor } from './core/interceptors/must-change-password.interceptor';
 import { IdempotencyInterceptor } from './core/interceptors/idempotency.interceptor';
 import { RpcIdempotencyInterceptor } from './core/interceptors/RCPIdempotency.interceptor';
+import { TenantContextInterceptor } from './core/interceptors/tenant-context.interceptor';
+import { RpcTenantContextInterceptor } from './core/interceptors/rpc-tenant-context.interceptor';
 import { ServiceAuthGuard } from './core/guards/service-auth.guard';
+import { RpcThrottlerGuard } from './core/guards/rpc-throttler.guard';
 
 @Module({
   imports: [
@@ -101,9 +105,17 @@ import { ServiceAuthGuard } from './core/guards/service-auth.guard';
     AuditModule,
     ReportsModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, TcpDocsController, RestDocsController],
   providers: [
     AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantContextInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RpcTenantContextInterceptor,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: IdempotencyInterceptor,
@@ -117,6 +129,10 @@ import { ServiceAuthGuard } from './core/guards/service-auth.guard';
       useClass: ServiceAuthGuard,
     },
     {
+      provide: APP_GUARD,
+      useClass: RpcThrottlerGuard,
+    },
+    {
       provide: APP_INTERCEPTOR,
       useClass: ResponseInterceptor,
     },
@@ -127,8 +143,4 @@ import { ServiceAuthGuard } from './core/guards/service-auth.guard';
   ],
   exports: [MailModule],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware).forRoutes('*');
-  }
-}
+export class AppModule {}

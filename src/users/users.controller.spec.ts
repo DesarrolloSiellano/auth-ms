@@ -94,6 +94,24 @@ describe('UsersController', () => {
       });
       expect(result).toBe('ok');
     });
+
+    it('fuerza la empresa del admin autenticado al crear', () => {
+      usersServiceMock.create.mockReturnValue('ok');
+      void controller.create({ company: 'EmpresaA' } as any, {
+        user: { isAdmin: true, isSuperAdmin: false, company: 'EmpresaA', tenantId: 'T-1' },
+      });
+      expect(usersServiceMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({ company: 'EmpresaA', tenantId: 'T-1' }),
+      );
+    });
+
+    it('rechaza crear para otra empresa (no SuperAdmin)', () => {
+      expect(() =>
+        controller.create({ company: 'EmpresaB' } as any, {
+          user: { isAdmin: true, isSuperAdmin: false, company: 'EmpresaA' },
+        }),
+      ).toThrow(ForbiddenException);
+    });
   });
 
   describe('findAll / findByPage', () => {
@@ -218,7 +236,9 @@ describe('UsersController', () => {
       const result = controller.update('abc', {} as any, {
         user: { isAdmin: true },
       });
-      expect(usersServiceMock.update).toHaveBeenCalledWith('abc', {});
+      expect(usersServiceMock.update).toHaveBeenCalledWith('abc', {}, {
+        isAdmin: true,
+      });
       expect(result).toBe('updated');
     });
 
@@ -228,9 +248,9 @@ describe('UsersController', () => {
       ).toThrow(UnauthorizedException);
     });
 
-    it('update rechaza asignar SuperAdmin si el autenticado no es SuperAdmin', () => {
+    it('update rechaza cambiar isAdmin si el autenticado no es SuperAdmin', () => {
       expect(() =>
-        controller.update('abc', { isSuperAdmin: true } as any, {
+        controller.update('abc', { isAdmin: true } as any, {
           user: { isAdmin: true, isSuperAdmin: false },
         }),
       ).toThrow(ForbiddenException);
@@ -249,14 +269,6 @@ describe('UsersController', () => {
       await expect(
         controller.remove('abc', { user: { isAdmin: false } }),
       ).rejects.toThrow(UnauthorizedException);
-    });
-  });
-
-  describe('tcpPatternsDoc', () => {
-    it('devuelve la documentación de patrones', () => {
-      const result = controller.tcpPatternsDoc();
-      expect(result.message).toContain('Comandos TCP');
-      expect(result.patterns.length).toBeGreaterThan(0);
     });
   });
 

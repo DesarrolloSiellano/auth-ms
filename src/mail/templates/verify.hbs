@@ -145,21 +145,17 @@
           <p class="greeting">Hola <strong>{{name}}</strong>,</p>
 
           <p class="text">
-            Para completar tu proceso en <strong>{{platform_name}}</strong>, utiliza el siguiente código de verificación.  
-            Este código tiene una validez temporal por motivos de seguridad.
+            Para completar tu proceso en <strong>{{platform_name}}</strong>, confirma tu correo
+            haciendo clic en el botón. El enlace es de <strong>un solo uso</strong>.
           </p>
 
-          <div class="otp-box">
-            <div class="otp-code">{{otp_code}}</div>
-          </div>
-
           <div class="btn-wrap">
-            <a href="{{verification_url}}" class="btn" target="_blank" rel="noopener">Verificar ahora</a>
+            <a href="{{verification_url}}" class="btn" target="_blank" rel="noopener">Verificar correo</a>
           </div>
 
           <p class="note">
             Si no solicitaste esta verificación, ignora este mensaje.  
-            Nunca compartas este código con nadie, ni siquiera con el equipo de soporte.
+            Nunca compartas este enlace con nadie, ni siquiera con el equipo de soporte.
           </p>
         </td>
       </tr>

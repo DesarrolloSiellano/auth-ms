@@ -2,10 +2,16 @@ import { Schema } from 'mongoose';
 import { tenantLocalStorage } from './tenant.context';
 
 export function tenantPlugin(schema: Schema) {
-  // 1. Métodos de Query a interceptar para añadir el filtro de compañía
+  // 1. Métodos de Query a interceptar para añadir el filtro de compañía.
+  //
+  // Nota: en Mongoose 8 `findById` delega en `findOne`, `findByIdAndUpdate` en
+  // `findOneAndUpdate` y `findByIdAndDelete` en `findOneAndDelete`, por lo que
+  // los hooks base ya cubren las operaciones por id. Se declaran también los
+  // nombres `findById*` de forma explícita (defensa en profundidad / claridad).
   const queryMethods = [
     'find',
     'findOne',
+    'findById',
     'countDocuments',
     'updateOne',
     'updateMany',
@@ -15,6 +21,8 @@ export function tenantPlugin(schema: Schema) {
     'findOneAndUpdate',
     'findOneAndDelete',
     'findOneAndReplace',
+    'findByIdAndUpdate',
+    'findByIdAndDelete',
   ];
 
   queryMethods.forEach((method) => {
@@ -23,34 +31,41 @@ export function tenantPlugin(schema: Schema) {
 
       // Si hay un tenant en el contexto asíncrono
       if (store) {
-        const options = (this as any).getOptions();
+        const options = (this as any).getOptions?.() || {};
 
-        // Si el usuario es SuperAdmin o el query especifica bypassTenant explícitamente, saltamos el filtro
+        // Si el usuario es SuperAdmin o el query especifica bypassTenant
+        // explícitamente, saltamos el filtro.
         if (store.isSuperAdmin || options?.bypassTenant === true) {
           return next();
         }
 
-        // De lo contrario, inyectamos el filtro de compañía de forma automática
-        (this as any).where({ company: store.companyId });
+        // Inyectamos el filtro de compañía de forma automática.
+        if (store.companyId) {
+          (this as any).where({ company: store.companyId });
+        }
       }
 
       next();
     });
   });
 
-  // 2. Interceptar el método validate() para inyectar automáticamente compañía y tenantId al crear documentos antes de la validación
+  // 2. Interceptar `validate` para fijar compañía/tenant al crear documentos.
   schema.pre('validate', function (next) {
     const store = tenantLocalStorage.getStore();
 
     if (store && this.isNew) {
-      // Inyectar company si no se especificó manualmente
-      if (!this.get('company')) {
-        this.set('company', store.companyId);
-      }
-
-      // Inyectar tenantId si no se especificó manualmente
-      if (!this.get('tenantId')) {
-        this.set('tenantId', store.tenantId);
+      if (store.isSuperAdmin) {
+        // El SuperAdmin puede especificar la empresa; solo se completa si falta.
+        if (!this.get('company') && store.companyId) {
+          this.set('company', store.companyId);
+        }
+        if (!this.get('tenantId') && store.tenantId) {
+          this.set('tenantId', store.tenantId);
+        }
+      } else {
+        // Usuario de empresa: se FUERZA su tenant (no se permite inyectar otro).
+        if (store.companyId) this.set('company', store.companyId);
+        if (store.tenantId) this.set('tenantId', store.tenantId);
       }
     }
 

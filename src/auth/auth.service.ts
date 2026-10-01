@@ -3,26 +3,43 @@ import {
   ForbiddenException,
   BadRequestException,
   NotFoundException,
-  InternalServerErrorException,
   Logger,
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import moment from 'moment';
 import { AuditService, AuditEntry } from 'src/audit/audit.service';
 import { Login, ChangePassword, RecoveryPassword } from './dto/auth.dto';
 import { EncryptionService } from 'src/core/services/encryption.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User } from 'src/users/entities/user.entity';
+import { Company } from 'src/companies/entities/company.entity';
 import { JwtService } from '@nestjs/jwt';
-import * as generatePassword from 'generate-password';
 import { MailService } from 'src/mail/mail.service';
 import { SessionsService } from 'src/sessions/sessions.service';
 import * as crypto from 'crypto';
 import { SetPasswordWithToken } from './dto/auth.dto';
 import { buildIdentityPayload } from './helpers/identity-payload.helper';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+import { LocaleService, DEFAULT_TIMEZONE, DEFAULT_LOCALE } from 'src/core/services/locale.service';
+
+export interface LoginRestriction {
+  code: string;
+  message: string;
+  details?: Record<string, any>;
+}
+
+/**
+ * Hash bcrypt de relleno para igualar el tiempo de respuesta cuando el usuario
+ * no existe (anti-enumeración por timing). No corresponde a ninguna contraseña.
+ */
+const DUMMY_PASSWORD_HASH =
+  '$2b$10$wFm7GBoDeIxwM5BvcTw9g.g/CoUQ8QyELqYfxLCq1ZcNnMq61hz1m';
+
+const INVALID_CREDENTIALS = {
+  message: 'Credenciales inválidas',
+  code: 'INVALID_CREDENTIALS',
+};
 
 @Injectable()
 export class AuthService {
@@ -32,10 +49,12 @@ export class AuthService {
     private readonly encryptionService: EncryptionService,
     private readonly jwtService: JwtService,
     @InjectModel('User') private readonly userModel: Model<User>,
+    @InjectModel('Company') private readonly companyModel: Model<Company>,
     private readonly sessionsService: SessionsService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
     private readonly tenantConfigService: TenantConfigService,
+    private readonly localeService: LocaleService,
     @Optional() private readonly auditService?: AuditService,
   ) {}
 
@@ -65,11 +84,16 @@ export class AuthService {
         os: meta?.os,
         detail: { reason: 'user_not_found' },
       });
-      throw new ForbiddenException('Usuario no encontrado');
+      // Anti-enumeración: mismo mensaje que "contraseña inválida" e igualar el
+      // tiempo de respuesta con un compare de relleno.
+      await Promise.resolve(
+        this.encryptionService.verifyPassword(login.password, DUMMY_PASSWORD_HASH),
+      ).catch(() => false);
+      throw new ForbiddenException(INVALID_CREDENTIALS);
     }
 
-    const blockState = await this.checkBlock(userDB);
-    if (blockState.blocked) {
+    const restrictions = await this.resolveLoginRestriction(userDB);
+    if (restrictions.length > 0) {
       this.audit({
         action: 'login.failed',
         category: 'auth',
@@ -82,11 +106,16 @@ export class AuthService {
         userAgent: meta?.user_agent,
         browser: meta?.browser,
         os: meta?.os,
-        detail: { reason: 'blocked', blockedUntil: blockState.until },
+        detail: {
+          reason: restrictions[0].code,
+          codes: restrictions.map((restriction) => restriction.code),
+        },
       });
-      throw new ForbiddenException(
-        'Usuario bloqueado temporalmente. Intente nuevamente más tarde.',
-      );
+      throw new ForbiddenException({
+        message: restrictions[0].message,
+        code: restrictions[0].code,
+        errors: restrictions,
+      });
     }
 
     const isPasswordValid = await this.encryptionService.verifyPassword(
@@ -95,7 +124,7 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
-      await this.registerFailedAttempt(userDB);
+      const lock = await this.registerFailedAttempt(userDB);
       this.audit({
         action: 'login.failed',
         category: 'auth',
@@ -108,29 +137,30 @@ export class AuthService {
         userAgent: meta?.user_agent,
         browser: meta?.browser,
         os: meta?.os,
-        detail: { reason: 'invalid_password' },
+        detail: {
+          reason: lock.blocked ? 'blocked_threshold' : 'invalid_password',
+        },
       });
-      throw new ForbiddenException('Creadenciales invalidas');
-    }
-
-    if (!userDB.isActived) {
-      this.audit({
-        action: 'login.failed',
-        category: 'auth',
-        status: 'failed',
-        userId: String(userDB._id as any),
-        email: userDB.email,
-        company: userDB.company,
-        tenantId: userDB.tenantId,
-        ip,
-        userAgent: meta?.user_agent,
-        browser: meta?.browser,
-        os: meta?.os,
-        detail: { reason: 'inactive_user' },
-      });
-      throw new ForbiddenException(
-        'Usuario no activo, comuniquese con el administrador',
-      );
+      if (lock.blocked) {
+        const message = lock.indefinite
+          ? 'Usuario bloqueado. Contacte al administrador.'
+          : `Usuario bloqueado temporalmente. Intente nuevamente en ${lock.minutes} minuto(s).`;
+        const code = lock.indefinite
+          ? 'USER_BLOCKED_INDEFINITE'
+          : 'USER_BLOCKED_TEMPORARY';
+        throw new ForbiddenException({
+          message,
+          code,
+          errors: [
+            {
+              code,
+              message,
+              details: { reason: 'auto', minutes: lock.minutes },
+            },
+          ],
+        });
+      }
+      throw new ForbiddenException(INVALID_CREDENTIALS);
     }
 
     if (userDB.isBlocked || userDB.failedLoginAttempts) {
@@ -172,6 +202,7 @@ export class AuthService {
       email: userDB.email,
       company: userDB.company,
       tenantId: userDB.tenantId || userDB.company || '0000000',
+      isSuperAdmin: userDB.isSuperAdmin === true,
       ip: ip,
       user_agent: meta?.user_agent || '',
       os: meta?.os || '',
@@ -227,10 +258,17 @@ export class AuthService {
    */
   private async checkBlock(
     user: any,
-  ): Promise<{ blocked: boolean; until?: string }> {
-    if (!user?.isBlocked) return { blocked: false };
-    const until = user.blockedUntil ? new Date(user.blockedUntil) : null;
-    if (!until || until.getTime() <= Date.now()) {
+  ): Promise<{ blocked: boolean; until?: string; indefinite: boolean }> {
+    if (!user?.isBlocked) return { blocked: false, indefinite: false };
+
+    // Sin fecha de expiración = bloqueo permanente/indefinido (manual o por
+    // `security.lockMinutes = 0`): no se levanta solo.
+    if (!user.blockedUntil) {
+      return { blocked: true, indefinite: true };
+    }
+
+    const until = new Date(user.blockedUntil);
+    if (until.getTime() <= Date.now()) {
       await this.userModel
         .updateOne(
           { _id: user._id },
@@ -245,59 +283,236 @@ export class AuthService {
         )
         .setOptions({ bypassTenant: true })
         .exec();
-      return { blocked: false };
+      return { blocked: false, indefinite: false };
     }
-    return { blocked: true, until: until.toISOString() };
+    return { blocked: true, indefinite: false, until: until.toISOString() };
+  }
+
+  /**
+   * Bloqueo por empresa: sin `blockedUntil` es indefinido; con fecha, se
+   * levanta al vencer. Devuelve `null` si no aplica.
+   */
+  private async checkCompanyBlock(
+    user: any,
+    timezone = DEFAULT_TIMEZONE,
+  ): Promise<{
+    blocked: boolean;
+    indefinite: boolean;
+    until?: string;
+    untilLabel?: string;
+    reason?: string;
+  } | null> {
+    if (!user) return null;
+    const or: any[] = [];
+    if (user.tenantId) or.push({ id: user.tenantId });
+    if (user.company) or.push({ name: user.company });
+    if (or.length === 0) return null;
+
+    const company: any = await this.companyModel
+      .findOne({ $or: or })
+      .lean()
+      .exec();
+    if (!company || !company.isBlocked) return null;
+
+    if (
+      company.blockedUntil &&
+      new Date(company.blockedUntil).getTime() <= Date.now()
+    ) {
+      await this.companyModel
+        .updateOne(
+          { _id: company._id },
+          { $set: { isBlocked: false, blockReason: null, blockedUntil: null } },
+        )
+        .exec();
+      return null;
+    }
+
+    const until = company.blockedUntil ? new Date(company.blockedUntil) : null;
+    return {
+      blocked: true,
+      indefinite: !until,
+      until: until ? until.toISOString() : undefined,
+      untilLabel: until
+        ? this.localeService.formatDateTime(until, timezone, DEFAULT_LOCALE)
+        : '',
+      reason: company.blockReason,
+    };
+  }
+
+  /**
+   * Reúne TODOS los motivos por los que el usuario no puede iniciar sesión,
+   * en orden de precedencia: empresa → usuario → prueba → inactivo.
+   */
+  private async resolveLoginRestriction(
+    user: any,
+  ): Promise<LoginRestriction[]> {
+    const restrictions: LoginRestriction[] = [];
+    const { timezone, locale } = await this.localeContext(user);
+
+    // 1) Empresa bloqueada (temporal o indefinida).
+    const companyBlock = await this.checkCompanyBlock(user, timezone);
+    if (companyBlock?.blocked) {
+      restrictions.push({
+        code: 'COMPANY_BLOCKED',
+        message: companyBlock.indefinite
+          ? 'Tu empresa está bloqueada. Contacta al administrador.'
+          : `Tu empresa está bloqueada temporalmente hasta el ${companyBlock.untilLabel}.`,
+        details: {
+          blockType: companyBlock.indefinite ? 'indefinite' : 'temporary',
+          until: companyBlock.until,
+          reason: companyBlock.reason,
+        },
+      });
+    }
+
+    // 2) Bloqueo del usuario (automático por intentos o manual).
+    const block = await this.checkBlock(user);
+    if (block.blocked) {
+      if (block.indefinite) {
+        restrictions.push({
+          code: 'USER_BLOCKED_INDEFINITE',
+          message: 'Usuario bloqueado. Contacte al administrador.',
+          details: { reason: user?.blockReason || 'manual', indefinite: true },
+        });
+      } else {
+        const until = block.until ? new Date(block.until) : null;
+        const minutes = until
+          ? Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000))
+          : 0;
+        const isAuto =
+          String(user?.blockReason || '').toLowerCase() === 'auto';
+        restrictions.push({
+          code: 'USER_BLOCKED_TEMPORARY',
+          message: isAuto
+            ? `Usuario bloqueado temporalmente. Intente nuevamente en ${minutes} minuto(s).`
+            : `Usuario bloqueado temporalmente hasta el ${
+                until
+                  ? this.localeService.formatDateTime(until, timezone, locale)
+                  : ''
+              }.`,
+          details: {
+            reason: isAuto ? 'auto' : 'manual',
+            until: block.until,
+            minutes,
+          },
+        });
+      }
+    }
+
+    // 3) Período de prueba vencido.
+    if (user?.isTrial && user?.trialEndsAt) {
+      const ends = new Date(user.trialEndsAt);
+      if (!Number.isNaN(ends.getTime()) && ends.getTime() <= Date.now()) {
+        restrictions.push({
+          code: 'TRIAL_EXPIRED',
+          message: `Tu período de prueba finalizó el ${this.localeService.formatDate(
+            ends,
+            timezone,
+          )}. Contacta al administrador.`,
+          details: { trialEndsAt: ends.toISOString() },
+        });
+      }
+    }
+
+    // 4) Usuario inactivo.
+    if (user && user.isActived === false) {
+      restrictions.push({
+        code: 'USER_INACTIVE',
+        message: 'Usuario no activo, comuníquese con el administrador.',
+      });
+    }
+
+    return restrictions;
   }
 
   /**
    * Incrementa el contador de intentos fallidos y aplica bloqueo temporal
    * cuando se alcanza `security.maxFailedAttempts` del tenant.
    */
-  private async registerFailedAttempt(user: any): Promise<void> {
+  private async registerFailedAttempt(user: any): Promise<{
+    blocked: boolean;
+    indefinite: boolean;
+    minutes: number;
+    until?: Date;
+  }> {
     const attempts = Number(user?.failedLoginAttempts || 0) + 1;
-    const max = Number(
-      await this.tenantConfigService.getPolicyValue(
-        user?.tenantId,
-        user?.company,
-        'security.maxFailedAttempts',
-      ),
+
+    const rawMax = await this.tenantConfigService.getPolicyValue(
+      user?.tenantId,
+      user?.company,
+      'security.maxFailedAttempts',
     );
-    const minutes =
-      Number(
-        await this.tenantConfigService.getPolicyValue(
-          user?.tenantId,
-          user?.company,
-          'security.lockMinutes',
-        ),
-      ) || 15;
+    const max = rawMax === null || rawMax === undefined ? NaN : Number(rawMax);
+
+    const rawMinutes = await this.tenantConfigService.getPolicyValue(
+      user?.tenantId,
+      user?.company,
+      'security.lockMinutes',
+    );
+    const minutesValue =
+      rawMinutes === null || rawMinutes === undefined
+        ? NaN
+        : Number(rawMinutes);
 
     const update: any = {
       failedLoginAttempts: attempts,
       lastFailedLoginAt: new Date(),
     };
 
-    if (max > 0 && attempts >= max) {
-      update.isBlocked = true;
-      update.blockedUntil = new Date(Date.now() + minutes * 60 * 1000);
-      update.blockReason = 'auto';
-      update.failedLoginAttempts = 0;
-      this.audit({
-        action: 'security.auto_lock',
-        category: 'security',
-        status: 'failed',
-        userId: String(user._id),
-        email: user.email,
-        company: user.company,
-        tenantId: user.tenantId,
-        detail: { attempts, minutes },
-      });
+    // `maxFailedAttempts` <= 0 = intentos ilimitados: no bloquea.
+    // Se bloquea al EXCEDER el máximo permitido.
+    const exceeds =
+      Number.isFinite(max) && max > 0 && attempts > max;
+
+    if (!exceeds) {
+      await this.userModel
+        .updateOne({ _id: user._id }, { $set: update })
+        .setOptions({ bypassTenant: true })
+        .exec();
+      return { blocked: false, indefinite: false, minutes: 0 };
     }
+
+    // `lockMinutes`: > 0 bloqueo temporal; 0 = indefinido; ausente/ inválido = 15.
+    let indefinite = false;
+    let minutes = 15;
+    if (Number.isFinite(minutesValue)) {
+      if (minutesValue <= 0) {
+        indefinite = true;
+        minutes = 0;
+      } else {
+        minutes = minutesValue;
+      }
+    }
+
+    update.isBlocked = true;
+    update.blockReason = 'auto';
+    update.failedLoginAttempts = 0;
+    update.blockedUntil = indefinite
+      ? null
+      : new Date(Date.now() + minutes * 60 * 1000);
+
+    this.audit({
+      action: 'security.auto_lock',
+      category: 'security',
+      status: 'failed',
+      userId: String(user._id),
+      email: user.email,
+      company: user.company,
+      tenantId: user.tenantId,
+      detail: { attempts, max, minutes, indefinite },
+    });
 
     await this.userModel
       .updateOne({ _id: user._id }, { $set: update })
       .setOptions({ bypassTenant: true })
       .exec();
+
+    return {
+      blocked: true,
+      indefinite,
+      minutes,
+      until: update.blockedUntil || undefined,
+    };
   }
 
   /**
@@ -321,6 +536,22 @@ export class AuthService {
     }
   }
 
+  /** Resuelve zona horaria y locale de visualización del tenant. */
+  private async localeContext(user: any): Promise<{
+    timezone: string;
+    locale: string;
+  }> {
+    try {
+      const [timezone, locale] = await Promise.all([
+        this.localeService.getTimezone(user?.tenantId, user?.company),
+        this.localeService.getLocale(user?.tenantId, user?.company),
+      ]);
+      return { timezone, locale };
+    } catch {
+      return { timezone: DEFAULT_TIMEZONE, locale: DEFAULT_LOCALE };
+    }
+  }
+
   /**
    * Notifica al usuario un nuevo inicio de sesión. No bloqueante y respeta
    * `preferences.notifications` / `preferences.notifications.newLogin` y
@@ -333,11 +564,14 @@ export class AuthService {
   ): Promise<void> {
     try {
       if (!(await this.isLoginNotificationEnabled(user))) return;
-      const now = moment();
+      const { timezone } = await this.localeContext(user);
+      const now = new Date();
       await this.mailService.sendEmail({
         to: user.email,
         subject: 'Nuevo inicio de sesión - BpoNet',
         template: 'session',
+        tenantId: user.tenantId,
+        company: user.company,
         context: {
           name: user.name,
           platform_name: 'BpoNet',
@@ -345,8 +579,8 @@ export class AuthService {
           browser: meta?.browser || 'Desconocido',
           user_agent: meta?.user_agent || '',
           ip: ip || 'Desconocida',
-          fecha: now.format('YYYY-MM-DD'),
-          hora: now.format('HH:mm:ss'),
+          fecha: this.localeService.formatDate(now, timezone),
+          hora: this.localeService.formatTime(now, timezone),
         },
       });
     } catch (error: any) {
@@ -358,6 +592,16 @@ export class AuthService {
 
   private async isLoginNotificationEnabled(user: any): Promise<boolean> {
     try {
+      // Precedencia: notificaciones (feature) → preferencias globales →
+      // aviso de nuevo login → canal email. Se corta en la primera
+      // política desactivada.
+      const featureNotifications =
+        await this.tenantConfigService.getPolicyValue(
+          user?.tenantId,
+          user?.company,
+          'features.notificaciones',
+        );
+      if (featureNotifications === false) return false;
       const global = await this.tenantConfigService.getPolicyValue(
         user?.tenantId,
         user?.company,
@@ -376,25 +620,63 @@ export class AuthService {
         'channels.email.enabled',
       );
       return emailEnabled !== false;
-    } catch {
-      return true;
+    } catch (error: any) {
+      // Fail-closed: si no se puede resolver la política, no se envía el correo.
+      this.logger.warn(
+        `No se pudo resolver la política de notificación de nuevo login: ${error?.message}`,
+      );
+      return false;
     }
   }
 
   async refreshAccessToken(refreshToken: string) {
     try {
       // 1. Verificar firma y expiración del refresh token
-      this.jwtService.verify(refreshToken, {
+      const decoded: any = this.jwtService.verify(refreshToken, {
         secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
+        algorithms: ['HS256'],
+        issuer: this.configService.get<string>('JWT_ISSUER', 'bponet-auth'),
+        audience: this.configService.get<string>(
+          'JWT_AUDIENCE',
+          'bponet-apps',
+        ),
       });
 
-      // 2. Buscar la sesión por el hash del token
-      const session = await this.sessionsService.findActiveByRefreshHash(
-        this.hashToken(refreshToken),
-      );
+      const sid = decoded?.sid;
+      if (!sid) {
+        throw new ForbiddenException('Invalid refresh token');
+      }
 
+      // 2. Localizar la sesión activa por su id (el refresh token lleva `sid`)
+      const session: any = await this.sessionsService.findActiveById(sid);
       if (!session) {
         throw new ForbiddenException('Invalid or expired refresh token');
+      }
+
+      const presentedHash = this.hashToken(refreshToken);
+      const used: string[] = session.usedRefreshTokens || [];
+
+      // 2.a. Reuso: el token presentado ya fue rotado → posible robo.
+      if (session.refreshToken !== presentedHash && used.includes(presentedHash)) {
+        await this.sessionsService.revokeByUser(session.user);
+        this.audit({
+          action: 'refresh.reuse',
+          category: 'auth',
+          status: 'failed',
+          userId: String(session.user),
+          email: session.email,
+          company: session.company,
+          tenantId: session.tenantId,
+          detail: { sessionId: String(session._id) },
+        });
+        throw new ForbiddenException(
+          'Sesión revocada por reutilización de token',
+        );
+      }
+
+      // 2.b. El token presentado no es el vigente ni uno usado → inválido.
+      if (session.refreshToken !== presentedHash) {
+        throw new ForbiddenException('Invalid refresh token');
       }
 
       const user = await this.userModel.findById(session.user).lean().exec();
@@ -402,16 +684,24 @@ export class AuthService {
         throw new ForbiddenException('User is inactive or no longer exists');
       }
 
-      // 3. Generate New Access Token
-      const newPayload = buildIdentityPayload(user, String(session._id));
+      // 3. Rotar el refresh token y emitir un nuevo access token.
+      const newRefreshToken = this.getJwtToken(
+        { _id: session.user, sid: String(session._id) },
+        this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
+        this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d'),
+      );
+      await this.sessionsService.rotateRefreshToken(
+        String(session._id),
+        this.hashToken(newRefreshToken),
+        presentedHash,
+      );
 
+      const newPayload = buildIdentityPayload(user, String(session._id));
       const accessToken = this.getJwtToken(
         newPayload,
         this.configService.get<string>('JWT_SECRET'),
         this.configService.get<string>('JWT_ACCESS_EXPIRATION', '1h'),
       );
-
-      await this.sessionsService.touch(String(session._id));
 
       this.audit({
         action: 'refresh',
@@ -429,9 +719,14 @@ export class AuthService {
         status: 'Success',
         message: 'Token refreshed successfully',
         accessToken,
+        refreshToken: newRefreshToken,
         payload: newPayload,
       };
     } catch (error) {
+      // Errores de negocio ya tipados se propagan tal cual (p. ej. reuso).
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
       // Si el refresh token expiró, desactivamos la sesión (mejor esfuerzo)
       if (error?.name === 'TokenExpiredError') {
         this.sessionsService
@@ -475,65 +770,132 @@ export class AuthService {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
-  async recoveryPassword(recovery: RecoveryPassword, redirectUri: string) {
+  async recoveryPassword(recovery: RecoveryPassword, redirectUri?: string) {
+    // Respuesta genérica siempre (anti-enumeración): no revelamos si el correo
+    // existe. Se envía el correo únicamente cuando el usuario existe.
+    const genericResponse = {
+      message:
+        'Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña',
+      meta: { totalData: 1 },
+    };
     try {
       const userDB = await this.userModel
         .findOne({ email: recovery.email })
         .exec();
 
       if (!userDB) {
-        throw new NotFoundException('Usuario no encontrado');
+        return genericResponse;
       }
 
-      const loginUrl = redirectUri || 'https://app.bponet.com.co';
+      const appUrl =
+        redirectUri ||
+        process.env.APP_URL ||
+        'https://app.bponet.com.co';
 
-      // Generar contraseña temporal segura
-      const tempPassword = generatePassword.generate({
-        length: 12,
-        numbers: true,
-        uppercase: true,
-        symbols: true,
-        strict: true,
-      });
+      // Token de un solo uso (mismo patrón que la invitación).
+      const { raw, hash, expires } = this.generateOneTimeToken();
+      userDB.passwordResetToken = hash;
+      userDB.passwordResetExpires = expires;
+      await userDB.save();
 
-      // Encriptar la contraseña temporal
-      const hashedPassword =
-        await this.encryptionService.hashPassword(tempPassword);
+      const resetUrl = `${appUrl.replace(/\/+$/, '')}/set-password?token=${raw}`;
 
-      // Actualizar la contraseña en la base de datos
-      const result = await this.userModel.findByIdAndUpdate(userDB._id, {
-        password: hashedPassword,
-        isNewUser: true,
-        mustChangePassword: true,
-        modified: new Date(),
-      });
-
-      if (!result) {
-        throw new InternalServerErrorException(
-          'Error al actualizar la contraseña',
-        );
-      }
-
-      // Enviar correo al usuario con la contraseña temporal
-      const info = await this.mailService.sendEmail({
-        to: result.email,
+      await this.mailService.sendEmail({
+        to: userDB.email,
         subject: 'Recuperación de contraseña - BpoNet',
-        template: 'recovery', // nombre del archivo welcome.hbs
+        template: 'recovery',
+        tenantId: userDB.tenantId,
+        company: userDB.company,
         context: {
-          name: result.name,
+          name: userDB.name,
           platform_name: 'BpoNet',
-          temporary_password: tempPassword, // si tienes la contraseña original aquí (revisar seguridad)
-          login_url: loginUrl, // url de login real de tu app
+          reset_url: resetUrl,
+          login_url: appUrl,
         },
       });
 
-      return {
-        message: 'Contraseña temporal enviada por correo',
-        meta: { totalData: 1, info },
-      };
+      return genericResponse;
     } catch (error) {
-      throw new BadRequestException(error.message);
+      // No filtrar detalles internos; respuesta genérica.
+      this.logger.error(
+        `Error en recuperación de contraseña: ${error?.message}`,
+        error?.stack,
+      );
+      return genericResponse;
     }
+  }
+
+  /** Genera un token de un solo uso: valor crudo, hash (BD) y expiración. */
+  private generateOneTimeToken(): {
+    raw: string;
+    hash: string;
+    expires: Date;
+  } {
+    const raw = crypto.randomBytes(32).toString('hex');
+    return {
+      raw,
+      hash: this.hashToken(raw),
+      expires: new Date(Date.now() + 60 * 60 * 1000), // 1 hora
+    };
+  }
+
+  /** Envía (o reenvía) el correo de verificación con token de un solo uso. */
+  async resendEmailVerification(userId: string) {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+    if (user.emailVerifiedAt) {
+      return { message: 'El correo ya está verificado' };
+    }
+
+    const { raw, hash, expires } = this.generateOneTimeToken();
+    user.emailVerificationToken = hash;
+    user.emailVerificationExpires = expires;
+    await user.save();
+
+    const appUrl = process.env.APP_URL || 'https://app.bponet.com.co';
+    const verifyUrl = `${appUrl.replace(/\/+$/, '')}/verify-email?token=${raw}`;
+
+    await this.mailService.sendEmail({
+      to: user.email,
+      subject: 'Verifica tu correo - BpoNet',
+      template: 'verify',
+      tenantId: user.tenantId,
+      company: user.company,
+      context: {
+        name: user.name,
+        platform_name: 'BpoNet',
+        verification_url: verifyUrl,
+      },
+    });
+
+    return { message: 'Correo de verificación enviado' };
+  }
+
+  /** Verifica el correo con un token de un solo uso. */
+  async verifyEmail(token: string) {
+    if (!token) {
+      throw new BadRequestException('Token inválido o expirado');
+    }
+    const hash = this.hashToken(token);
+    const user = await this.userModel
+      .findOne({
+        emailVerificationToken: hash,
+        emailVerificationExpires: { $gt: new Date() },
+      })
+      .exec();
+
+    if (!user) {
+      throw new BadRequestException('Token inválido o expirado');
+    }
+
+    user.emailVerifiedAt = new Date();
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
+
+    return { message: 'Correo verificado exitosamente' };
   }
 
   async changePassword(changePassword: ChangePassword) {
@@ -602,7 +964,10 @@ export class AuthService {
     user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
-    user.isNewUser = false; // El usuario ya estableció su pass por primera vez
+    // El usuario ya estableció su contraseña por invitación: no se le debe
+    // volver a exigir el cambio al iniciar sesión.
+    user.isNewUser = false;
+    user.mustChangePassword = false;
 
     await user.save();
 
@@ -616,7 +981,14 @@ export class AuthService {
       secret:
         secret || this.configService.getOrThrow<string>('JWT_SECRET'),
       expiresIn:
-        expiresIn || this.configService.get<string>('JWT_EXPIRATION', '30d'),
+        expiresIn ||
+        this.configService.get<string>('JWT_ACCESS_EXPIRATION', '1h'),
+      algorithm: 'HS256',
+      issuer: this.configService.get<string>('JWT_ISSUER', 'bponet-auth'),
+      audience: this.configService.get<string>(
+        'JWT_AUDIENCE',
+        'bponet-apps',
+      ),
     });
   }
 }

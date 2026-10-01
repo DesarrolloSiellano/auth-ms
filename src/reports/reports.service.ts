@@ -12,6 +12,7 @@ import { Session } from 'src/sessions/entities/session.entity';
 import { Company } from 'src/companies/entities/company.entity';
 import { AuditService } from 'src/audit/audit.service';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+import { LocaleService } from 'src/core/services/locale.service';
 import { REPORT_DEFINITIONS } from './reports.registry';
 import {
   ReportContext,
@@ -32,6 +33,7 @@ export class ReportsService {
     @InjectModel('Company') private readonly companyModel: Model<Company>,
     private readonly tenantConfigService: TenantConfigService,
     private readonly auditService: AuditService,
+    private readonly localeService: LocaleService,
   ) {}
 
   private isAllowed(user: any): boolean {
@@ -57,7 +59,16 @@ export class ReportsService {
       companyModel: this.companyModel,
       tenantConfigService: this.tenantConfigService,
       auditService: this.auditService,
+      localeService: this.localeService,
     };
+  }
+
+  private async ctxLocale(ctx: ReportContext) {
+    const [timezone, locale] = await Promise.all([
+      this.localeService.getTimezone(ctx.tenantId, ctx.company),
+      this.localeService.getLocale(ctx.tenantId, ctx.company),
+    ]);
+    return { timezone, locale };
   }
 
   private exportMaxRows(): number {
@@ -102,6 +113,7 @@ export class ReportsService {
   async preview(id: string, filters: any, user: any, limit = 50) {
     const { def, ctx, result } = await this.runReport(id, filters, user);
     const rows = (result.rows || []).slice(0, limit);
+    const loc = await this.ctxLocale(ctx);
     return {
       message: 'Vista previa del reporte',
       data: {
@@ -115,7 +127,11 @@ export class ReportsService {
         chart: result.chart || null,
         total: (result.rows || []).length,
         generatedBy: ctx.userName,
-        generatedAt: new Date().toISOString(),
+        generatedAt: this.localeService.formatDateTime(
+          new Date(),
+          loc.timezone,
+          loc.locale,
+        ),
       },
       meta: { totalData: rows.length, total: (result.rows || []).length },
     };
@@ -131,6 +147,7 @@ export class ReportsService {
     const cap = limit && limit > 0 ? Math.min(limit, max) : max;
     const all = result.rows || [];
     const rows = all.slice(0, cap);
+    const loc = await this.ctxLocale(ctx);
     return {
       message: 'Datos del reporte',
       data: {
@@ -145,7 +162,11 @@ export class ReportsService {
         total: all.length,
         truncated: all.length > rows.length,
         generatedBy: ctx.userName,
-        generatedAt: new Date().toISOString(),
+        generatedAt: this.localeService.formatDateTime(
+          new Date(),
+          loc.timezone,
+          loc.locale,
+        ),
       },
       meta: { totalData: rows.length, total: all.length, limit: cap, max },
     };
@@ -175,10 +196,18 @@ export class ReportsService {
       true,
     );
 
-    const meta = `Generado: ${new Date().toLocaleString('es-CO')} · Usuario: ${ctx.userName}${
+    const loc = await this.ctxLocale(ctx);
+    const meta = `Generado: ${this.localeService.formatDateTime(
+      new Date(),
+      loc.timezone,
+      loc.locale,
+    )} · Usuario: ${ctx.userName}${
       ctx.tenantLabel ? ' · ' + ctx.tenantLabel : ''
     }`;
-    const baseName = `${def.id}_${new Date().toISOString().slice(0, 10)}`;
+    const baseName = `${def.id}_${this.localeService.formatDate(
+      new Date(),
+      loc.timezone,
+    )}`;
 
     if (format === 'csv') {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');

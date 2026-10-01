@@ -168,4 +168,67 @@ export class CompaniesService {
     }
     return deletedCompany;
   }
+
+  /**
+   * Bloquea una empresa: todos sus usuarios no podrán iniciar sesión.
+   * Sin `until` = bloqueo indefinido (permanente hasta desbloquear).
+   */
+  async block(
+    id: string,
+    options: { reason?: string; until?: string } = {},
+  ) {
+    const until = options.until ? new Date(options.until) : null;
+
+    const updated = await this.companyModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            isBlocked: true,
+            blockReason: options.reason || 'manual',
+            blockedUntil: until,
+          },
+        },
+        { new: true },
+      )
+      .lean()
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(`Company with ID ${id} not found`);
+    }
+
+    return {
+      message: 'Company blocked successfully',
+      data: updated,
+      meta: { totalData: 1, id },
+    };
+  }
+
+  async unblock(id: string) {
+    const updated = await this.companyModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            isBlocked: false,
+            blockReason: null,
+            blockedUntil: null,
+          },
+        },
+        { new: true },
+      )
+      .lean()
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(`Company with ID ${id} not found`);
+    }
+
+    return {
+      message: 'Company unblocked successfully',
+      data: updated,
+      meta: { totalData: 1, id },
+    };
+  }
 }

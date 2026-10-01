@@ -1,0 +1,1582 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Guía de Integración — APIs Externas | Plataforma de Autenticación BPONET</title>
+<style>
+  @page { size: A4; margin: 18mm 0 16mm 0; }
+  @page :first { margin: 0; }
+
+  :root {
+    --brand:      #0d3b66;
+    --brand-2:    #14508c;
+    --accent:     #00b894;
+    --accent-2:   #0984a3;
+    --warn:       #e17055;
+    --danger:     #d63031;
+    --ink:        #1c2833;
+    --ink-soft:   #4a5a6a;
+    --line:       #dde3ea;
+    --bg-soft:    #f5f8fb;
+    --code-bg:    #0f2033;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    font-size: 10pt;
+    line-height: 1.55;
+    margin: 0;
+    padding: 0 15mm;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ============ COVER ============ */
+  .cover {
+    height: 296mm;
+    box-sizing: border-box;
+    margin: 0 -15mm;
+    padding: 46mm 22mm 18mm 22mm;
+    background: linear-gradient(150deg, #071f38 0%, #0d3b66 45%, #14508c 100%);
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+  }
+  .cover::after {
+    content: "";
+    position: absolute;
+    right: -70mm; bottom: -70mm;
+    width: 210mm; height: 210mm;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,184,148,.30) 0%, rgba(0,184,148,0) 65%);
+  }
+  .cover::before {
+    content: "";
+    position: absolute;
+    right: 40mm; top: -50mm;
+    width: 150mm; height: 150mm;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 62%);
+  }
+  .cover-inner { position: relative; z-index: 2; }
+  .cover-badge {
+    display: inline-block;
+    background: rgba(0,184,148,.18);
+    border: 1px solid rgba(0,184,148,.55);
+    color: #7ff0d0;
+    font-size: 8.5pt; font-weight: 700;
+    letter-spacing: .16em; text-transform: uppercase;
+    padding: 5px 13px; border-radius: 20px;
+    margin-bottom: 15mm;
+  }
+  .cover h1 {
+    font-size: 33pt; line-height: 1.12; margin: 0 0 6mm 0;
+    font-weight: 800; letter-spacing: -.5px;
+  }
+  .cover h1 span { color: #7ff0d0; }
+  .cover .sub {
+    font-size: 12.5pt; font-weight: 300; color: #bcd4e8;
+    max-width: 135mm; line-height: 1.5; margin-bottom: 12mm;
+  }
+  .cover-rule { width: 62mm; height: 3px; background: var(--accent); border-radius: 2px; margin-bottom: 11mm; }
+  .cover-meta { display: flex; gap: 11mm; flex-wrap: wrap; font-size: 9pt; margin-top: 11mm; }
+  .cover-meta div { color: #9dbdd6; }
+  .cover-meta b { display: block; color: #fff; font-size: 10.5pt; font-weight: 700; margin-top: 2px; }
+
+  .cover-cards { display: flex; gap: 6mm; margin-top: 14mm; }
+  .cover-card {
+    flex: 1;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 11px; padding: 7mm 6mm;
+    backdrop-filter: blur(4px);
+  }
+  .cover-card .n { font-size: 20pt; font-weight: 800; color: #7ff0d0; line-height: 1; }
+  .cover-card .l { font-size: 8.5pt; color: #b6cde0; margin-top: 2.5mm; line-height: 1.4; }
+
+  .cover-foot {
+    position: absolute; bottom: 16mm; left: 22mm; right: 22mm;
+    z-index: 2; font-size: 8pt; color: #7fa3c0;
+    border-top: 1px solid rgba(255,255,255,.14); padding-top: 5mm;
+    display: flex; justify-content: space-between;
+  }
+
+  /* ============ TOC ============ */
+  .toc { page-break-after: always; }
+  .toc h2 { font-size: 19pt; color: var(--brand); margin: 0 0 2mm 0; }
+  .toc .lead { color: var(--ink-soft); font-size: 9.5pt; margin-bottom: 8mm; }
+  .toc ol { list-style: none; counter-reset: s; padding: 0; margin: 0; columns: 2; column-gap: 14mm; }
+  .toc ol li { counter-increment: s; break-inside: avoid; margin-bottom: 3.4mm; font-size: 10pt; }
+  .toc ol li::before {
+    content: counter(s, decimal-leading-zero);
+    display: inline-block; width: 9mm;
+    color: var(--accent-2); font-weight: 800; font-size: 9pt;
+  }
+  .toc ol li a { color: var(--ink); text-decoration: none; }
+  .toc ol li a:hover { color: var(--accent-2); }
+  .toc ol li ul { list-style: none; padding-left: 9mm; margin-top: 1.6mm; }
+  .toc ol li ul li { font-size: 8.7pt; color: var(--ink-soft); margin-bottom: 1.2mm; }
+  .toc ol li ul li::before { content: "·"; color: var(--accent); font-weight: 800; }
+
+  /* ============ HEADINGS ============ */
+  h2.sec {
+    font-size: 17pt; color: var(--brand); margin: 0 0 1mm 0;
+    padding: 0 0 3mm 0; border-bottom: 2.5px solid var(--accent);
+    break-after: avoid; font-weight: 800;
+  }
+  .sec-num { color: var(--accent-2); }
+  h2.sec .sec-sub { display: block; font-size: 9pt; font-weight: 400; color: var(--ink-soft); margin-top: 1.5mm; border: 0; }
+  h3 {
+    font-size: 12pt; color: var(--brand-2); margin: 7mm 0 2.5mm 0;
+    break-after: avoid; font-weight: 700;
+  }
+  h4 { font-size: 10.2pt; color: var(--ink); margin: 5mm 0 2mm 0; break-after: avoid; font-weight: 700; }
+
+  .section { page-break-before: always; }
+  .section.first { page-break-before: avoid; }
+
+  /* ============ CODE ============ */
+  pre {
+    background: var(--code-bg);
+    color: #d7e5f0;
+    padding: 4mm 5mm;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 100%;
+    overflow-wrap: break-word;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 7.5pt;
+    line-height: 1.5;
+    margin: 3mm 0 1.5mm 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-left: 3.5px solid var(--accent);
+    break-inside: avoid;
+  }
+  pre .c  { color: #6d8ca3; font-style: italic; }
+  pre .k  { color: #7ff0d0; font-weight: 600; }
+  pre .s  { color: #ffd479; }
+  pre .f  { color: #8fc7ff; }
+
+  code.inl {
+    background: #eaf2f8; color: #0d3b66;
+    padding: 1px 5px; border-radius: 4px;
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 8.6pt; font-weight: 600;
+    border: 1px solid #d4e4f0;
+  }
+
+  .src {
+    font-size: 7.4pt; color: var(--ink-soft);
+    font-family: "SF Mono", Menlo, monospace;
+    margin: 0 0 4mm 0;
+    padding-left: 2mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* ============ TABLES ============ */
+  table {
+    width: 100%; border-collapse: collapse; margin: 3.5mm 0;
+    font-size: 8.6pt; break-inside: avoid;
+  }
+  thead { display: table-header-group; }
+  th {
+    background: var(--brand); color: #fff;
+    text-align: left; padding: 2.6mm 3mm;
+    font-size: 8.3pt; font-weight: 700;
+    letter-spacing: .03em; border: 1px solid var(--brand);
+  }
+  td { padding: 2.4mm 3mm; border: 1px solid var(--line); vertical-align: top; }
+  tbody tr:nth-child(even) { background: var(--bg-soft); }
+  tbody tr { break-inside: avoid; }
+  td.mono, th.mono { font-family: "SF Mono", Menlo, monospace; font-size: 8pt; }
+  td.c { text-align: center; }
+
+  /* ============ CALLOUTS ============ */
+  .box {
+    border-radius: 8px; padding: 3.6mm 4.5mm;
+    margin: 4mm 0; font-size: 9.2pt; break-inside: avoid;
+    border-left: 4px solid;
+  }
+  .box .bt { font-weight: 800; display: block; margin-bottom: 1.6mm; font-size: 9.4pt; }
+  .info  { background: #eaf4fb; border-color: var(--accent-2); color: #0b3a55; }
+  .ok    { background: #e8f8f3; border-color: var(--accent); color: #085c46; }
+  .warn  { background: #fff6ec; border-color: var(--warn); color: #8a4415; }
+  .error { background: #fdecec; border-color: var(--danger); color: #8c1c1c; }
+  .box code.inl { background: rgba(255,255,255,.75); }
+
+  /* ============ STEPS ============ */
+  .steps { counter-reset: st; margin: 4mm 0; }
+  .step {
+    position: relative; padding: 0 0 5mm 13mm;
+    break-inside: avoid;
+  }
+  .step::before {
+    counter-increment: st; content: counter(st);
+    position: absolute; left: 0; top: 0;
+    width: 8.4mm; height: 8.4mm; border-radius: 50%;
+    background: var(--brand); color: #fff;
+    font-size: 9.5pt; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step::after {
+    content: ""; position: absolute; left: 4.1mm; top: 9mm; bottom: 1mm;
+    width: 0.5mm; background: var(--line);
+  }
+  .step:last-child::after { display: none; }
+  .step h4 { margin: 1mm 0 1.5mm 0; font-size: 10.3pt; }
+  .step p { margin: 0 0 2mm 0; color: var(--ink-soft); }
+
+  /* ============ DIAGRAMS ============ */
+  .diagram {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 5mm;
+    margin: 4mm 0;
+    break-inside: avoid;
+    text-align: center;
+  }
+  .diagram .dg-title {
+    font-size: 8.5pt; font-weight: 800; color: var(--brand);
+    text-transform: uppercase; letter-spacing: .1em; margin-bottom: 4mm;
+  }
+  .row { display: flex; align-items: stretch; justify-content: center; gap: 4mm; }
+  .node {
+    background: #fff; border: 1.6px solid var(--brand-2); border-radius: 8px;
+    padding: 3.2mm 4mm; min-width: 30mm; font-size: 8.4pt; font-weight: 600;
+    color: var(--brand); flex: 0 1 auto;
+  }
+  .node.accent { border-color: var(--accent); color: #08705a; }
+  .node.warn-n  { border-color: var(--warn); color: #8a4415; }
+  .node .nsub { display: block; font-size: 7.2pt; font-weight: 400; color: var(--ink-soft); margin-top: 1.2mm; }
+  .arrow { align-self: center; color: var(--accent-2); font-size: 15pt; font-weight: 700; line-height: 1; }
+  .port-chip {
+    display: inline-block; background: var(--brand); color: #fff;
+    font-size: 7pt; padding: 1px 6px; border-radius: 9px;
+    font-family: Menlo, monospace; margin-top: 1.5mm;
+  }
+
+  /* sequence diagram */
+  .seq { }
+  .seq-row { display: flex; align-items: center; margin-bottom: 2.6mm; gap: 3mm; }
+  .seq-lane {
+    width: 32mm; flex: 0 0 32mm; text-align: right;
+    font-size: 8.2pt; font-weight: 700; color: var(--brand); line-height: 1.3;
+  }
+  .seq-body { flex: 1; border-left: 2px dashed var(--line); padding-left: 4mm; font-size: 8.4pt; }
+  .seq-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 5.4mm; height: 5.4mm; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 7.4pt; font-weight: 800;
+    margin-right: 2.4mm; flex: 0 0 5.4mm;
+  }
+  .seq-body b { color: var(--brand-2); }
+  .seq-body .em { color: var(--ink-soft); font-size: 7.8pt; display: block; margin-top: 0.8mm; }
+
+  /* flow chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 2.5mm; margin: 3mm 0; }
+  .chip {
+    background: #fff; border: 1.4px solid var(--brand-2); border-radius: 16px;
+    padding: 1.8mm 4mm; font-size: 8.3pt; font-weight: 600; color: var(--brand);
+  }
+  .chip.ac { border-color: var(--accent); color: #08705a; }
+  .chip.wn { border-color: var(--warn); color: #8a4415; }
+
+  .two-col { display: flex; gap: 5mm; }
+  .two-col > div { flex: 1; }
+
+  ul.tight { margin: 2mm 0 2mm 0; padding-left: 5mm; }
+  ul.tight li { margin-bottom: 1.4mm; }
+
+  .kbd {
+    display: inline-block; background: var(--ink); color: #fff;
+    font-family: Menlo, monospace; font-size: 7.6pt;
+    padding: 1px 6px; border-radius: 4px; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================= COVER ============================= -->
+<div class="cover">
+  <div class="cover-inner">
+    <div class="cover-badge">BPONET · Plataforma de Autenticación</div>
+    <h1>Guía de Integración<br>con <span>APIs Externas</span></h1>
+    <div class="cover-rule"></div>
+    <p class="sub">
+      Documento técnico de referencia para conectar aplicaciones al microservicio
+      de autenticación <b>auth-ms</b>: autenticación cruzada por redirección (SSO),
+      consumo de la API REST con clave de servicio y conexión TCP servicio-a-servicio.
+      Incluye el catálogo completo de comandos TCP.
+    </p>
+
+    <div class="cover-cards">
+      <div class="cover-card">
+        <div class="n">3</div>
+        <div class="l">Vías de integración documentadas: SSO, REST y TCP</div>
+      </div>
+      <div class="cover-card">
+        <div class="n">44</div>
+        <div class="l">Comandos TCP disponibles en 7 dominios</div>
+      </div>
+      <div class="cover-card">
+        <div class="n">3010</div>
+        <div class="l">Puerto REST · <b>3011</b> Puerto TCP</div>
+      </div>
+    </div>
+
+    <div class="cover-meta">
+      <div>Sistema<b>auth-ms</b></div>
+      <div>Stack<b>NestJS 11 · MongoDB</b></div>
+      <div>Consumidores<b>Educativa · WhatsApp · CRM · Helpdesk</b></div>
+    </div>
+  </div>
+  <div class="cover-foot">
+    <span>Documento de integración · Uso interno del equipo de desarrollo</span>
+    <span>Versión 1.0</span>
+  </div>
+</div>
+
+<!-- ============================= TOC ============================= -->
+<div class="toc">
+  <h2>Contenido</h2>
+  <p class="lead">Referencia completa para integrar aplicaciones externas con la plataforma de autenticación.</p>
+  <ol>
+    <li><a href="#s1">Panorama general y puertos</a>
+      <ul><li>Arquitectura y flujo de datos</li><li>Cuándo usar cada vía</li></ul></li>
+    <li><a href="#s2">Variables de entorno</a>
+      <ul><li>Configuración de auth-ms</li><li>Configuración del cliente</li></ul></li>
+    <li><a href="#s3">Vía A — Autenticación cruzada (SSO)</a>
+      <ul><li>Los 6 pasos del flujo</li><li>Código listo para copiar</li><li>Whitelist de orígenes</li></ul></li>
+    <li><a href="#s4">Vía B — API REST con clave de servicio</a>
+      <ul><li>Headers requeridos</li><li>Catálogo de endpoints</li><li>Ejemplos curl</li></ul></li>
+    <li><a href="#s5">Vía C — Conexión TCP</a>
+      <ul><li>Módulo cliente (simple y TLS)</li><li>Catálogo completo de comandos</li><li>Script de prueba</li></ul></li>
+    <li><a href="#s6">Payload del JWT y errores</a>
+      <ul><li>Claims del token ligero</li><li>Códigos de error de login</li></ul></li>
+    <li><a href="#s7">Políticas y límites por tenant</a>
+      <ul><li>Estructura de la configuración</li><li>Patrón de consumo y caché</li></ul></li>
+    <li><a href="#s8">Alta de una aplicación nueva</a>
+      <ul><li>Checklist paso a paso</li></ul></li>
+    <li><a href="#s9">Pruebas y troubleshooting</a>
+      <ul><li>Comandos de verificación</li><li>Tabla de síntomas y soluciones</li></ul></li>
+    <li><a href="#s10">Referencias y documentación viva</a></li>
+  </ol>
+</div>
+
+<!-- ============================= S1 ============================= -->
+<div class="section" id="s1">
+  <h2 class="sec"><span class="sec-num">01</span> Panorama general y puertos</h2>
+  <p class="sec-sub">Qué es <code class="inl">auth-ms</code> y las tres formas de conectarse a él</p>
+
+  <p>
+    <b>auth-ms</b> es el microservicio central de identidad y autorización (IAM) de BPONET.
+    Administra usuarios, roles, permisos, módulos, empresas (tenants), sesiones y políticas
+    por empresa. Todas las demás aplicaciones del ecosistema <b>consumen</b> sus servicios
+    en lugar de mantener su propia lógica de autenticación.
+  </p>
+
+  <div class="diagram">
+    <div class="dg-title">Arquitectura de integración</div>
+    <div class="row">
+      <div class="node">Navegador<span class="nsub">App externa (Angular/React)</span></div>
+      <div class="arrow">⇄</div>
+      <div class="node accent">auth-ms<span class="nsub">Identidad · Autorización · Tenants</span><span class="port-chip">REST 3010 · TCP 3011</span></div>
+      <div class="arrow">→</div>
+      <div class="node">MongoDB<span class="nsub">Usuarios · Sesiones · Policies</span></div>
+    </div>
+    <div style="margin-top:4mm; font-size:8.2pt; color:#4a5a6a; max-width:150mm; margin-left:auto; margin-right:auto;">
+      El navegador habla <b>solo por HTTPS/REST</b> con el access token.
+      Los backends hablan por <b>REST con clave de servicio</b> o por <b>TCP</b> con <code class="inl">serviceKey</code>.
+    </div>
+  </div>
+
+  <h3>Los dos puertos de auth-ms</h3>
+  <table>
+    <thead><tr><th style="width:22%">Puerto</th><th style="width:20%">Protocolo</th><th>Uso</th><th style="width:26%">Credencial</th></tr></thead>
+    <tbody>
+      <tr><td class="mono"><b>3010</b></td><td>HTTP / HTTPS</td><td>API REST. Es la superficie pública: login, refresh, perfil, políticas, administración.</td><td class="mono">Authorization: Bearer<br>x-service-key</td></tr>
+      <tr><td class="mono"><b>3011</b></td><td>TCP (JSON)</td><td>Canal interno entre microservicios. Más eficiente para llamadas backend-a-backend frecuentes.</td><td class="mono">serviceKey (en el payload)</td></tr>
+    </tbody>
+  </table>
+  <p class="src">Fuente: <code>auth-ms/src/main.ts:43</code> (globalPrefix <code>api</code>, puerto 3010) y <code>auth-ms/src/main.ts:139-153</code> (TCP 3011)</p>
+
+  <h3>Cuándo usar cada vía</h3>
+  <div class="chips">
+    <span class="chip ac">SSO redirección → Login de usuario</span>
+    <span class="chip">REST + x-service-key → Integración simple</span>
+    <span class="chip ac">TCP + serviceKey → Backends, alto volumen</span>
+  </div>
+  <table>
+    <thead><tr><th style="width:22%">Vía</th><th style="width:20%">Cuándo usarla</th><th>Ventajas</th></tr></thead>
+    <tbody>
+      <tr><td><b>A · SSO</b><br><span class="src" style="margin:0">Redirección</span></td><td>Login de personas desde el navegador</td><td>Usuario final nunca ve dos formularios. El token nunca pasa por la barra de direcciones de una página intermedia.</td></tr>
+      <tr><td><b>B · REST</b><br><span class="src" style="margin:0">x-service-key</span></td><td>Integraciones de baja o media frecuencia, prototipos, clientes externos, cualquier lenguaje</td><td>Simple de depurar con <code class="inl">curl</code> o Postman. No requiere cliente TCP.</td></tr>
+      <tr><td><b>C · TCP</b><br><span class="src" style="margin:0">serviceKey</span></td><td>Backends NestJS con llamadas frecuentes (validar JWT en cada request, consultar políticas)</td><td>Menor latencia, sin throttling HTTP y ya es el estándar en el ecosistema (educative-backend, api-whatsapp).</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box info">
+    <span class="bt">Principio de diseño del token</span>
+    El JWT contiene <b>solo identidad</b> (<code class="inl">_id</code>, <code class="inl">name</code>, <code class="inl">email</code>, <code class="inl">company</code>, <code class="inl">tenantId</code>, <code class="inl">isSuperAdmin</code>). El árbol de <b>autorización</b> (modules/roles/permissions) se obtiene después con <code class="inl">GET /api/users/profile</code>. Esto mantiene el token por debajo de 1&nbsp;KB y evita los errores <b>431</b> y <b>414</b> al pasarlo por la URL. Ver sección 6.
+  </div>
+</div>
+
+<!-- ============================= S2 ============================= -->
+<div class="section" id="s2">
+  <h2 class="sec"><span class="sec-num">02</span> Variables de entorno</h2>
+  <p class="sec-sub">Qué debe tener configurado el servidor y qué debe tener tu aplicación</p>
+
+  <h3>2.1 Configuración de auth-ms (servidor)</h3>
+  <p>Validadas al arrancar con Joi; si falta una obligatoria, el servicio <b>no levanta</b> (fail-fast).</p>
+  <table>
+    <thead><tr><th style="width:30%">Variable</th><th style="width:9%">Req.</th><th style="width:19%">Default</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">MONGO_URI</td><td class="c"><b>Sí</b></td><td>—</td><td>Cadena de conexión a MongoDB.</td></tr>
+      <tr><td class="mono">JWT_SECRET</td><td class="c"><b>Sí</b></td><td>—</td><td>Firma de los access tokens.</td></tr>
+      <tr><td class="mono">JWT_REFRESH_SECRET</td><td class="c"><b>Sí</b></td><td>—</td><td>Firma de los refresh tokens.</td></tr>
+      <tr><td class="mono">EMAIL_HOST<br>EMAIL_USERNAME<br>EMAIL_PASSWORD</td><td class="c"><b>Sí</b></td><td>—</td><td>SMTP para invitaciones, recuperación y avisos de nuevo login.</td></tr>
+      <tr><td class="mono">SSO_ALLOWED_ORIGINS</td><td class="c"><b>Sí</b></td><td>—</td><td><b>Whitelist de redirección SSO</b>, separada por comas. Ej.: <code>crm-educative.bponet.com.co,api-whatsapp.bponet.com.co</code></td></tr>
+      <tr><td class="mono">SERVICE_API_KEY</td><td class="c"><b>Sí</b></td><td>—</td><td><b>Secreto compartido</b> entre servicios. Debe coincidir exactamente con el de cada consumidor.</td></tr>
+      <tr><td class="mono">PORT</td><td class="c">No</td><td class="mono">3010</td><td>Puerto HTTP.</td></tr>
+      <tr><td class="mono">MICROSERVICE_HOST</td><td class="c">No</td><td class="mono">127.0.0.1</td><td>Host de escucha TCP.</td></tr>
+      <tr><td class="mono">MICROSERVICE_PORT</td><td class="c">No</td><td class="mono">3011</td><td>Puerto TCP.</td></tr>
+      <tr><td class="mono">JWT_ACCESS_EXPIRATION</td><td class="c">No</td><td class="mono">1h</td><td>Vigencia del access token.</td></tr>
+      <tr><td class="mono">JWT_REFRESH_EXPIRATION</td><td class="c">No</td><td class="mono">7d</td><td>Vigencia del refresh token.</td></tr>
+      <tr><td class="mono">CORS_ORIGIN</td><td class="c">No</td><td class="mono">*</td><td>Orígenes permitidos, separados por coma.</td></tr>
+      <tr><td class="mono">TLS_ENABLED</td><td class="c">No</td><td class="mono">false</td><td>Activa TLS en el canal TCP.</td></tr>
+      <tr><td class="mono">TLS_KEY_PATH<br>TLS_CERT_PATH<br>TLS_CA_PATH</td><td class="c">No</td><td>—</td><td>Rutas a clave, certificado y CA.</td></tr>
+      <tr><td class="mono">TLS_MUTUAL</td><td class="c">No</td><td class="mono">false</td><td>mTLS: exige <code>requestCert</code> y <code>rejectUnauthorized</code>.</td></tr>
+      <tr><td class="mono">TENANT_CONFIG_EMBED_IN_AUTH</td><td class="c">No</td><td class="mono">true</td><td>Incluye la config del tenant en la respuesta de login/profile.</td></tr>
+      <tr><td class="mono">TEST_USER_DAYS</td><td class="c">No</td><td class="mono">7</td><td>Días de prueba. <code>0</code> = sin expiración.</td></tr>
+    </tbody>
+  </table>
+  <p class="src">Fuente: <code>auth-ms/src/core/config/env.validation.ts:3-62</code></p>
+
+  <h3>2.2 Configuración del cliente (tu aplicación)</h3>
+  <pre><span class="c"># ── Conexión TCP con auth-ms ──────────────────────────</span>
+<span class="k">USER_MS_HOST</span>=app.bponet.com.co
+<span class="k">USER_MS_PORT</span>=3011
+
+<span class="c"># Secreto compartido con auth-ms. DEBE coincidir exactamente.</span>
+<span class="k">SERVICE_API_KEY</span>=clave-secreta-compartida
+
+<span class="c"># TLS / mTLS del canal TCP (dejar en false hasta que el servidor lo active)</span>
+<span class="k">TLS_ENABLED</span>=false
+<span class="k">TLS_CA_PATH</span>=
+<span class="k">TLS_KEY_PATH</span>=
+<span class="k">TLS_CERT_PATH</span>=</pre>
+  <p class="src">Basado en <code>nuevaInfra/api-whatsapp/apps/api/.env.example</code></p>
+
+  <div class="box warn">
+    <span class="bt">El nombre de la variable no es estándar, es una convención del ecosistema</span>
+    Aunque el microservicio se llame <code class="inl">auth-ms</code>, las variables del cliente se llaman
+    <code class="inl">USER_MS_HOST</code> / <code class="inl">USER_MS_PORT</code> (heredadas de cuando el servicio
+    se llamaba user-ms) y el cliente TCP se registra con el token <code class="inl">'USER_SERVICE'</code>.
+    Mantén estos nombres para ser consistente con <b>educative-backend</b> y <b>api-whatsapp</b>.
+  </div>
+</div>
+
+<!-- ============================= S3 ============================= -->
+<div class="section" id="s3">
+  <h2 class="sec"><span class="sec-num">03</span> Vía A — Autenticación cruzada por redirección (SSO)</h2>
+  <p class="sec-sub">Login centralizado: el usuario se autentica una vez y aterriza en tu aplicación</p>
+
+  <p>
+    Este es el patrón que usa <b>crm-educative</b> (plataforma educativa). Tu aplicación
+    <b>no recibe ni valida la contraseña</b>: envía al usuario al login de la plataforma de
+    autenticación y recibe los tokens de vuelta en la URL.
+  </p>
+
+  <div class="diagram seq">
+    <div class="dg-title">Secuencia del flujo SSO</div>
+    <div class="seq-row"><div class="seq-lane">App externa</div><div class="seq-body"><span class="seq-num">1</span><b>Redirige</b> el navegador a <code class="inl">authUrl?redirect_uri=…</code><span class="em">location.href = authUrl + '?redirect_uri=' + encodeURIComponent(redirectUri)</span></div></div>
+    <div class="seq-row"><div class="seq-lane">Plataforma de auth</div><div class="seq-body"><span class="seq-num">2</span><b>Muestra el login</b> y recibe <code class="inl">POST /api/auth/login</code> con el <code class="inl">redirect_uri</code><span class="em">El usuario escribe su correo y contraseña aquí, una sola vez</span></div></div>
+    <div class="seq-row"><div class="seq-lane">Plataforma de auth</div><div class="seq-body"><span class="seq-num">3</span><b>Valida el origen</b> contra <code class="inl">SSO_ALLOWED_ORIGINS</code><span class="em">Si el dominio no está en la lista, NO redirige: devuelve el token en el body</span></div></div>
+    <div class="seq-row"><div class="seq-lane">Plataforma de auth</div><div class="seq-body"><span class="seq-num">4</span><b>Devuelve la URL</b> con los tokens y el navegador navega a ella<span class="em">{ url: 'https://tu-app…?access_token=…&amp;refresh_token=…' } → location.href = res.url</span></div></div>
+    <div class="seq-row"><div class="seq-lane">App externa</div><div class="seq-body"><span class="seq-num">5</span><b>Captura y limpia</b>: guarda los tokens y borra la URL con <code class="inl">replaceState</code><span class="em">access_token → localStorage · refresh_token → sessionStorage</span></div></div>
+    <div class="seq-row"><div class="seq-lane">App externa</div><div class="seq-body"><span class="seq-num">6</span><b>Carga el perfil</b> y valida permisos de módulo<span class="em">GET /api/users/profile → valida mod.name === storageKey</span></div></div>
+  </div>
+
+  <h3>3.1 Configuración de la aplicación</h3>
+  <p>Lo primero es declarar dos URLs en tu <code class="inl">environment</code>:</p>
+  <pre><span class="c">// environment.ts</span>
+<span class="k">export const</span> <span class="f">ENVIRONMENT</span> = {
+  <span class="f">production</span>: <span class="k">false</span>,
+  <span class="f">authUrl</span>: <span class="s">'https://auth.bponet.com.co/login'</span>,   <span class="c">// login de la plataforma de auth</span>
+  <span class="f">redirectUri</span>: <span class="s">'http://localhost:4201'</span>,          <span class="c">// origen de TU app (sin ruta)</span>
+  <span class="f">url</span>: <span class="s">'https://app.bponet.com.co/auth/api'</span>,  <span class="c">// base de la API REST</span>
+  <span class="f">storageKey</span>: <span class="s">'crmEducative'</span>,                     <span class="c">// nombre exacto del módulo en auth-ms</span>
+};</pre>
+  <p class="src">Basado en <code>platformEducativa/crm-educative/src/environment/environment.ts</code></p>
+
+  <div class="box info">
+    <span class="bt">Las dos URLs deben ser consistentes entre sí</span>
+    <code class="inl">redirectUri</code> es el <b>origen</b> de tu app (sin ruta). El destino exacto se arma
+    después añadiendo la ruta del dashboard. En producción ambos deben coincidir con el dominio
+    registrado en <code class="inl">SSO_ALLOWED_ORIGINS</code>.
+  </div>
+
+  <h3>3.2 Los 6 pasos, con el código</h3>
+
+  <div class="steps">
+    <div class="step">
+      <h4>Paso 1 — Lanzar la redirección</h4>
+      <p>Desde un botón o un <code class="inl">ngOnInit</code> si no hay sesión, lleva al usuario al login central.</p>
+      <pre>goToLogin() {
+  <span class="k">const</span> redirectUri = ENVIRONMENT.redirectUri + <span class="s">'/pages/dashboard'</span>;
+  window.location.href = <span class="s">`${this.authUrl}?redirect_uri=${encodeURIComponent(redirectUri)}`</span>;
+}</pre>
+      <p class="src">Origen: <code>platformEducativa/crm-educative/src/app/auth/login-landing/login-landing.component.ts:229-232</code></p>
+    </div>
+
+    <div class="step">
+      <h4>Paso 2 — Capturar el token en el guard</h4>
+      <p>Tu ruta protegida debe leer <code class="inl">access_token</code> de la URL. Es crítico <b>limpiar la URL</b> con <code class="inl">replaceState</code> para no dejar el token expuesto en el historial, en los logs del navegador y en el botón "atrás".</p>
+      <pre><span class="k">async</span> <span class="f">canActivate</span>(route, state) {
+  <span class="k">const</span> accessTokenFromUrl  = route.queryParamMap.get(<span class="s">'access_token'</span>);
+  <span class="k">const</span> refreshTokenFromUrl = route.queryParamMap.get(<span class="s">'refresh_token'</span>);
+
+  <span class="k">if</span> (accessTokenFromUrl) {
+    <span class="k">const</span> isValid = <span class="k">await</span> <span class="k">this</span>.processAuthData.proccesAuthData(
+      accessTokenFromUrl, refreshTokenFromUrl ?? <span class="k">undefined</span>
+    );
+    <span class="k">if</span> (isValid) {
+      <span class="c">// Limpia el token de la barra de direcciones</span>
+      <span class="k">const</span> urlWithoutToken = state.url.split(<span class="s">'?'</span>)[<span class="k">0</span>];
+      <span class="k">this</span>.location.replaceState(urlWithoutToken);
+      <span class="k">return true</span>;
+    }
+    <span class="k">return this</span>.router.parseUrl(<span class="s">'/exception/403'</span>);
+  }
+
+  <span class="k">const</span> token = localStorage.getItem(<span class="s">'access_token'</span>);
+  <span class="k">if</span> (!token || !<span class="k">this</span>.isTokenValid(token)) { <span class="k">this</span>.redirectToLogin(); <span class="k">return false</span>; }
+
+  <span class="c">// Ya está logueado: evita llamadas extra si el módulo está cargado</span>
+  <span class="k">if</span> (localStorage.getItem(ENVIRONMENT.storageKey)) <span class="k">return true</span>;
+
+  <span class="c">// Token válido pero sin perfil: cárgalo y valida acceso</span>
+  <span class="k">const</span> loaded = <span class="k">await</span> <span class="k">this</span>.processAuthData.loadProfile();
+  <span class="k">return</span> loaded ? <span class="k">true</span> : <span class="k">this</span>.router.parseUrl(<span class="s">'/exception/403'</span>);
+}</pre>
+      <p class="src">Origen: <code>platformEducativa/crm-educative/src/app/auth/auth-guard.ts:24-69</code></p>
+    </div>
+
+    <div class="step">
+      <h4>Paso 3 — Guardar la identidad</h4>
+      <p>Decodifica el token (solo lectura, para pintar la UI) y guarda los claims. El <b>refresh token va a <code class="inl">sessionStorage</code></b>: al cerrar la pestaña se descarta, lo que obliga a un login nuevo tras un tiempo de inactividad.</p>
+      <table style="margin-top:2mm">
+        <thead><tr><th style="width:30%">Clave</th><th style="width:18%">Almacén</th><th>Contenido</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">access_token</td><td class="mono">localStorage</td><td>JWT de acceso</td></tr>
+          <tr><td class="mono">refreshToken</td><td class="mono"><b>sessionStorage</b></td><td>JWT de refresco (se descarta al cerrar la pestaña)</td></tr>
+          <tr><td class="mono">exp · iat</td><td class="mono">localStorage</td><td>Vencimiento y emisión, para validar sin llamar al servidor</td></tr>
+          <tr><td class="mono">company · tenantId</td><td class="mono">localStorage</td><td>Contexto del tenant (clave del consumo de políticas)</td></tr>
+          <tr><td class="mono">_id · email · userName</td><td class="mono">localStorage</td><td>Identidad para la cabecera y la UI</td></tr>
+          <tr><td class="mono">isSuperAdmin · isActive</td><td class="mono">localStorage</td><td>Banderas para guards de UI</td></tr>
+          <tr><td class="mono">roles</td><td class="mono">localStorage</td><td>Roles del usuario (tras cargar el perfil)</td></tr>
+          <tr><td class="mono">&lt;storageKey&gt;</td><td class="mono">localStorage</td><td>Árbol de rutas del módulo. Su presencia evita pedir el perfil en cada navegación.</td></tr>
+        </tbody>
+      </table>
+      <pre><span class="k">async</span> <span class="f">proccesAuthData</span>(token: <span class="k">string</span>, refreshToken?: <span class="k">string</span>): Promise&lt;<span class="k">boolean</span>&gt; {
+  <span class="k">try</span> {
+    <span class="k">const</span> decoded = jwtDecode&lt;JwtPayload&gt;(token);
+
+    <span class="k">if</span> (refreshToken) sessionStorage.setItem(<span class="s">'refreshToken'</span>, refreshToken);
+
+    localStorage.setItem(<span class="s">'access_token'</span>, token);
+    localStorage.setItem(<span class="s">'exp'</span>,   String(decoded.exp));
+    localStorage.setItem(<span class="s">'company'</span>, String(decoded.company));
+    localStorage.setItem(<span class="s">'tenantId'</span>, String(decoded.tenantId));
+    localStorage.setItem(<span class="s">'_id'</span>,     String(decoded._id));
+    localStorage.setItem(<span class="s">'email'</span>,   decoded.email);
+    <span class="c">// … resto de claims</span>
+
+    <span class="k">return await this</span>.loadProfile();   <span class="c">// pide /users/profile y valida módulo</span>
+  } <span class="k">catch</span> (error) { <span class="k">return false</span>; }
+}</pre>
+      <p class="src">Origen: <code>platformEducativa/crm-educative/src/app/auth/service/process-auth-data.ts:18-45</code></p>
+    </div>
+
+    <div class="step">
+      <h4>Paso 4 — Cargar el perfil y validar el módulo</h4>
+      <p>El token no trae permisos. Se piden a <code class="inl">GET /api/users/profile</code> y se comprueba que el usuario tenga <b>un módulo cuyo <code class="inl">name</code> coincida exactamente</b> con tu <code class="inl">storageKey</code>. Si no lo tiene, se muestra el mensaje de acceso denegado.</p>
+      <pre><span class="k">async</span> <span class="f">loadProfile</span>(): Promise&lt;<span class="k">boolean</span>&gt; {
+  <span class="k">const</span> profile = <span class="k">await</span> firstValueFrom(<span class="k">this</span>.authService.getProfile());
+  <span class="k">const</span> data = profile?.data;
+
+    localStorage.setItem(<span class="s">'roles'</span>, JSON.stringify(data?.roles || []));
+    <span class="k">const</span> modules = data?.modules || [];
+
+  <span class="c">// El nombre del módulo debe coincidir con storageKey</span>
+  <span class="k">const</span> validatedModuleExists = modules.some(
+    mod =&gt; mod.name === ENVIRONMENT.storageKey
+  );
+
+  <span class="k">if</span> (!validatedModuleExists) {
+    <span class="k">this</span>.confirmService.showMessage(<span class="s">'error'</span>,
+      <span class="s">`No tienes permisos para acceder a esta módulo`</span>,
+      <span class="s">`Contacta al administrador del sistema`</span>);
+    <span class="k">return false</span>;
+  }
+
+  <span class="k">this</span>.saveModuleToLocalStorage(modules);
+  <span class="k">return true</span>;
+}</pre>
+      <p class="src">Origen: <code>platformEducativa/crm-educative/src/app/auth/service/process-auth-data.ts:47-81</code></p>
+    </div>
+
+    <div class="step">
+      <h4>Paso 5 — Interceptor: token automático y refresco</h4>
+      <p>Un interceptor añade el <code class="inl">Authorization: Bearer</code> a cada petición. Al recibir un <b>401</b> refresca el token y <b>encola</b> las peticiones que llegan simultáneamente, para no disparar N refrescos en paralelo.</p>
+      <pre><span class="k">const</span> token = localStorage.getItem(<span class="s">'access_token'</span>);
+
+<span class="k">let</span> authReq = req;
+<span class="k">if</span> (token &amp;&amp; !req.url.includes(<span class="s">'/auth/refresh'</span>)) {
+  authReq = req.clone({ setHeaders: { <span class="f">Authorization</span>: <span class="s">`Bearer ${token}`</span> } });
+}
+
+<span class="k">return</span> next(authReq).pipe(
+  <span class="f">catchError</span>((error) =&gt; {
+    <span class="c">// Rate limit del servidor</span>
+    <span class="k">if</span> (error.status === <span class="k">429</span>) { <span class="c">/* avisar al usuario */</span> }
+
+    <span class="k">if</span> (error.status === <span class="k">401</span> &amp;&amp; !req.url.includes(<span class="s">'/auth/refresh'</span>)) {
+      <span class="k">const</span> refreshToken = sessionStorage.getItem(<span class="s">'refreshToken'</span>);
+      <span class="k">if</span> (!refreshToken) { clearSessionAndRedirect(router); <span class="k">return throwError</span>(() =&gt; error); }
+
+      <span class="k">if</span> (!isRefreshing) {
+        isRefreshing = <span class="k">true</span>;
+        refreshTokenSubject.next(<span class="k">null</span>);
+
+        <span class="k">return</span> authService.refreshToken(refreshToken).pipe(
+          <span class="f">switchMap</span>((res) =&gt; {
+            <span class="k">const</span> newToken = res.accessToken || res.access_token || <span class="s">''</span>;
+            <span class="k">const</span> newRefreshToken = res.refreshToken || res.refresh_token || refreshToken;
+
+            <span class="k">return from</span>(processAuthData.proccesAuthData(newToken, newRefreshToken)).pipe(
+              <span class="f">switchMap</span>((ok) =&gt; {
+                isRefreshing = <span class="k">false</span>;
+                refreshTokenSubject.next(newToken);
+                <span class="c">// Reintenta la petición original con el token nuevo</span>
+                <span class="k">return from</span>(next(req.clone({
+                  setHeaders: { <span class="f">Authorization</span>: <span class="s">`Bearer ${newToken}`</span> } })));
+              }),
+            );
+          }),
+        );
+      } <span class="k">else</span> {
+        <span class="c">// Hay un refresco en curso: esperar y reusar su resultado</span>
+        <span class="k">return</span> refreshTokenSubject.pipe(
+          <span class="f">filter</span>((t) =&gt; t !== <span class="k">null</span>), <span class="f">take</span>(<span class="k">1</span>),
+          <span class="f">switchMap</span>((newToken) =&gt; next(req.clone({
+            setHeaders: { <span class="f">Authorization</span>: <span class="s">`Bearer ${newToken}`</span> } }))));
+      }
+    }
+    <span class="k">return throwError</span>(() =&gt; error);
+  }),
+);
+
+<span class="k">function</span> <span class="f">clearSessionAndRedirect</span>(router) {
+  localStorage.clear();
+  sessionStorage.clear();
+  setTimeout(() =&gt; { window.location.href = <span class="s">'/'</span>; }, <span class="k">500</span>);
+}</pre>
+      <p class="src">Origen: <code>platformEducativa/crm-educative/src/app/shared/interceptors/auth.interceptor.ts:31-137</code></p>
+    </div>
+
+    <div class="step">
+      <h4>Paso 6 — Cierre de sesión</h4>
+      <p>Para revocar la sesión en el servidor (no basta con borrar el token local) llama al logout y luego limpia el almacenamiento.</p>
+      <pre><span class="f">logout</span>() {
+  <span class="k">const</span> refreshToken = sessionStorage.getItem(<span class="s">'refreshToken'</span>);
+  <span class="c">// POST /api/auth/logout  { refreshToken }  → revoca la sesión en auth-ms</span>
+  <span class="k">return this</span>.http.post(<span class="s">`${ENVIRONMENT.url}/auth/logout`</span>, { refreshToken });
+}</pre>
+      <p class="src">Endpoint: <code>auth-ms/src/auth/auth.controller.ts:134-144</code></p>
+    </div>
+  </div>
+
+  <h3>3.3 La whitelist de orígenes (SSO_ALLOWED_ORIGINS)</h3>
+  <p>Por seguridad, auth-ms <b>solo redirige</b> si el dominio del <code class="inl">redirect_uri</code> está registrado. La comparación acepta el dominio exacto y sus subdominios:</p>
+  <pre><span class="k">const</span> url = <span class="k">new</span> URL(redirectUri);
+<span class="k">const</span> isAllowed = <span class="k">this</span>.whitelist.<span class="f">some</span>(domain =&gt;
+  url.hostname === domain || url.hostname.endsWith(<span class="s">'.'</span> + domain)
+);
+
+<span class="k">if</span> (isAllowed) {
+  url.searchParams.append(<span class="s">'access_token'</span>,  result.meta.accessToken);
+  url.searchParams.append(<span class="s">'refresh_token'</span>, result.meta.refreshToken);
+  <span class="k">return</span> { url: url.toString(), message: <span class="s">'Login successful'</span> };
+}</pre>
+  <p class="src">Origen: <code>auth-ms/src/auth/auth.controller.ts:109-131</code></p>
+
+  <div class="box error">
+    <span class="bt">Si tu dominio no está en la lista, el flujo "se rompe" silenciosamente</span>
+    auth-ms <b>no lanza error</b>: simplemente no redirige y devuelve el token en el body de la respuesta.
+    El frontend de la plataforma de autenticación solo hace <code class="inl">location.href = res.url</code> si
+    <code class="inl">res.url</code> existe; si no, se queda en su propio dashboard y el usuario
+    <b>nunca llega a tu aplicación</b>. Registra tu dominio antes de probar.
+  </div>
+
+  <h3>3.4 Ejemplo completo con curl (login directo, sin redirección)</h3>
+  <pre><span class="c"># Desde tu backend, sin navegador: pide los tokens directamente</span>
+curl -X POST <span class="s">"https://app.bponet.com.co/auth/api/auth/login"</span> \
+  -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">'{
+    "email": "usuario@empresa.com",
+    "password": "clave-segura",
+    "meta": { "browser": "API", "isbrowser": false, "user_agent": "mi-backend/1.0" }
+  }'</span></pre>
+  <p>Respuesta <code class="inl">200</code>:</p>
+  <pre>{
+  <span class="f">"message"</span>: <span class="s">"Login successful"</span>,
+  <span class="f">"statusCode"</span>: <span class="k">200</span>,
+  <span class="f">"status"</span>: <span class="s">"Success"</span>,
+  <span class="f">"meta"</span>: {
+    <span class="f">"token"</span>: <span class="s">"jwt..."</span>,          <span class="c">// alias de compatibilidad</span>
+    <span class="f">"accessToken"</span>: <span class="s">"jwt..."</span>,
+    <span class="f">"refreshToken"</span>: <span class="s">"jwt..."</span>,
+    <span class="f">"mustChangePassword"</span>: <span class="k">false</span>,
+    <span class="f">"tenantConfig"</span>: { <span class="c">/* ... */</span> }
+  }
+}</pre>
+  <p class="src">Origen: <code>auth-ms/src/auth/auth.service.ts:224-233</code></p>
+</div>
+
+<!-- ============================= S4 ============================= -->
+<div class="section" id="s4">
+  <h2 class="sec"><span class="sec-num">04</span> Vía B — API REST con clave de servicio</h2>
+  <p class="sec-sub">Integración backend-a-backend usando el secreto compartido, sin depender del JWT de un usuario</p>
+
+  <p>
+    Cuando tu backend necesita consultar datos de auth-ms, puede presentar el
+    <b>secreto compartido</b> en lugar de actuar en nombre de un usuario. Es el mecanismo
+    que usa <b>api-whatsapp</b> para las consultas administrativas.
+  </p>
+
+  <h3>4.1 Autenticación: el guard dual</h3>
+  <p>Las rutas marcadas con <code class="inl">ServiceOrJwtGuard</code> aceptan <b>dos</b> formas de autenticarse. El guard decide automáticamente según lo que reciba:</p>
+  <div class="diagram">
+    <div class="dg-title">Resolución del guard ServiceOrJwtGuard</div>
+    <div class="row">
+      <div class="node">Tu petición<span class="nsub">Llega a /api/users/profile</span></div>
+      <div class="arrow">→</div>
+      <div class="node warn-n">¿Viene x-service-key?<span class="nsub">Se compara con SERVICE_API_KEY</span></div>
+      <div class="arrow">→</div>
+      <div class="node accent">AUTO<span class="nsub">Se autentica como servicio</span></div>
+    </div>
+    <div class="row" style="margin-top:4mm">
+      <div class="node accent">isService: true<br><span class="nsub">company ← x-company-id<br>tenantId ← x-tenant-id</span></div>
+      <div style="align-self:center; color:#4a5a6a; font-size:8pt; font-weight:700">SI NO →</div>
+      <div class="node">JWT de usuario<span class="nsub">Authorization: Bearer &lt;token&gt;<br>isService: false</span></div>
+    </div>
+  </div>
+  <pre><span class="c">// Si el servicio presenta la clave compartida, se autentica como servicio</span>
+<span class="k">if</span> (providedKey) {
+  <span class="k">if</span> (!<span class="k">this</span>.verifyKey(providedKey)) <span class="k">throw new</span> UnauthorizedException(<span class="s">'Invalid service credentials'</span>);
+  request.user = {
+    <span class="f">isService</span>: <span class="k">true</span>, <span class="f">isAdmin</span>: <span class="k">false</span>, <span class="f">isSuperAdmin</span>: <span class="k">false</span>, <span class="f">isActived</span>: <span class="k">true</span>,
+    <span class="f">company</span>:  request.headers?.[<span class="s">'x-company-id'</span>] || <span class="k">null</span>,
+    <span class="f">tenantId</span>: request.headers?.[<span class="s">'x-tenant-id'</span>] || request.headers?.[<span class="s">'x-company-id'</span>] || <span class="k">null</span>,
+  };
+  <span class="k">return true</span>;
+}
+
+<span class="c">// Sin clave: flujo normal de frontend con JWT de usuario final</span>
+<span class="k">const</span> jwtGuard = <span class="k">new</span> (<span class="f">AuthGuard</span>(<span class="s">'jwt'</span>))();
+<span class="k">return await</span> lastValueFrom(jwtGuard.canActivate(context));</pre>
+  <p class="src">Origen: <code>auth-ms/src/core/guards/service-or-jwt.guard.ts:16-49</code></p>
+
+  <div class="box ok">
+    <span class="bt">La comparación es en tiempo constante</span>
+    La clave se valida con <code class="inl">crypto.timingSafeEqual</code>, tras comprobar que
+    ambos buffers tienen la misma longitud. Esto evita que un atacante pueda deducir la clave
+    midiendo cuánto tarda la respuesta. Un fallo produce
+    <code class="inl">401 Unauthorized · Invalid service credentials</code>.
+  </div>
+
+  <h3>4.2 Headers requeridos</h3>
+  <table>
+    <thead><tr><th style="width:26%">Header</th><th style="width:14%">Obligatorio</th><th>Uso</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">x-service-key</td><td class="c">Condicional</td><td>Valor de <code class="inl">SERVICE_API_KEY</code>. Habilita el acceso como servicio en las rutas habilitadas. Si se omite, la ruta exige JWT.</td></tr>
+      <tr><td class="mono">x-company-id</td><td class="c">Sí <span class="src" style="margin:0">(findByTenant)</span></td><td>Identifica la empresa. Se usa como <code class="inl">company</code> y, si no se manda <code class="inl">x-tenant-id</code>, también como <code class="inl">tenantId</code>.</td></tr>
+      <tr><td class="mono">x-tenant-id</td><td class="c">No</td><td>Tiene prioridad sobre <code class="inl">x-company-id</code> para el <code class="inl">tenantId</code>.</td></tr>
+      <tr><td class="mono">x-user-id</td><td class="c">No</td><td>Sujeto sobre el que se consulta el perfil. Alternativa al query param <code class="inl">?userId=</code>.</td></tr>
+      <tr><td class="mono">Authorization</td><td class="c">Condicional</td><td><code class="inl">Bearer &lt;access_token&gt;</code>. Alternativa a <code class="inl">x-service-key</code>.</td></tr>
+    </tbody>
+  </table>
+  <p class="src">Origen: <code>auth-ms/src/core/guards/service-or-jwt.guard.ts:20-40</code> y <code>auth-ms/src/users/users.controller.ts:189-190, 152-153</code></p>
+
+  <h3>4.3 Catálogo de endpoints REST</h3>
+  <table>
+    <thead><tr><th style="width:30%">Endpoint</th><th style="width:16%">Auth</th><th>Descripción</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">POST /api/auth/login</td><td>Pública</td><td>Inicia sesión. Acepta <code class="inl">?redirectUri=</code> para la redirección SSO.</td></tr>
+      <tr><td class="mono">POST /api/auth/refresh</td><td>Pública</td><td><code class="inl">{ refreshToken }</code> → nuevo access token.</td></tr>
+      <tr><td class="mono">POST /api/auth/logout</td><td>Pública</td><td>Revoca la sesión. Acepta <code class="inl">{ refreshToken }</code>.</td></tr>
+      <tr><td class="mono">POST /api/auth/change-password</td><td>JWT</td><td>Cambia la contraseña. El <code class="inl">_id</code> se toma del token, nunca del body.</td></tr>
+      <tr><td class="mono">POST /api/auth/recovery-password</td><td>Pública</td><td>Envía el correo de recuperación.</td></tr>
+      <tr><td class="mono">POST /api/auth/set-password-token</td><td>Pública</td><td>Establece la contraseña con el token de invitación.</td></tr>
+      <tr><td class="mono">GET /api/auth/validate-user</td><td>JWT</td><td>Valida el token y devuelve el usuario.</td></tr>
+      <tr><td class="mono"><b>GET /api/users/profile</b></td><td><b>x-service-key</b> o JWT</td><td><b>Endpoint clave de integración.</b> Identidad + modules + roles + permissions. Requiere <code class="inl">x-user-id</code> o <code class="inl">?userId=</code> si se usa la clave de servicio.</td></tr>
+      <tr><td class="mono">GET /api/users/profile/modules</td><td>x-service-key o JWT</td><td>Solo el árbol de módulos y rutas.</td></tr>
+      <tr><td class="mono">GET /api/users/profile/roles</td><td>x-service-key o JWT</td><td>Solo roles y sus permisos.</td></tr>
+      <tr><td class="mono">GET /api/users/profile/permissions</td><td>x-service-key o JWT</td><td>Solo la lista de permisos.</td></tr>
+      <tr><td class="mono">GET /api/users/findByTenant</td><td>x-service-key o JWT</td><td>Usuarios activos del tenant. Requiere <code class="inl">x-company-id</code>.</td></tr>
+      <tr><td class="mono">GET /api/tenants/config</td><td>x-service-key o JWT</td><td>Configuración/políticas del tenant.</td></tr>
+      <tr><td class="mono">POST /api/tenants/usage/report</td><td>x-service-key o JWT</td><td>Reporta consumo (deltas, idempotente por <code class="inl">reportId</code>).</td></tr>
+    </tbody>
+  </table>
+  <p class="src">Fuente: <code>auth-ms/src/users/users.controller.ts</code>, <code>auth-ms/src/auth/auth.controller.ts</code> y <code>auth-ms/src/tenant-config/tenant-config.controller.ts</code></p>
+
+  <h3>4.4 Ejemplos curl</h3>
+  <pre><span class="c"># ── Perfil de un usuario, autenticando como servicio ──</span>
+curl <span class="s">"https://app.bponet.com.co/auth/api/users/profile?userId=6a15aa34beff67e3e3463c52"</span> \
+  -H <span class="s">"x-service-key: $SERVICE_API_KEY"</span>
+
+<span class="c"># ── Perfil indicando el sujeto en el header ──</span>
+curl <span class="s">"https://app.bponet.com.co/auth/api/users/profile"</span> \
+  -H <span class="s">"x-service-key: $SERVICE_API_KEY"</span> \
+  -H <span class="s">"x-user-id: 6a15aa34beff67e3e3463c52"</span>
+
+<span class="c"># ── Usuarios de una empresa (findByTenant exige company) ──</span>
+curl <span class="s">"https://app.bponet.com.co/auth/api/users/findByTenant"</span> \
+  -H <span class="s">"x-service-key: $SERVICE_API_KEY"</span> \
+  -H <span class="s">"x-company-id: BPONET"</span> \
+  -H <span class="s">"x-tenant-id: 0000000"</span>
+
+<span class="c"># ── Configuración del tenant ──</span>
+curl <span class="s">"https://app.bponet.com.co/auth/api/tenants/config?tenantId=0000000"</span> \
+  -H <span class="s">"x-service-key: $SERVICE_API_KEY"</span>
+
+<span class="c"># ── Con JWT de usuario (flugo normal del frontend) ──</span>
+curl <span class="s">"https://app.bponet.com.co/auth/api/users/profile"</span> \
+  -H <span class="s">"Authorization: Bearer $ACCESS_TOKEN"</span></pre>
+
+  <div class="box warn">
+    <span class="bt">Limitación conocida de CORS: <code>x-service-key</code> no está en la lista de headers permitidos</span>
+    En <code>main.ts</code> la configuración de CORS declara
+    <code>allowedHeaders: ['Content-Type', 'Authorization', 'x-idempotency-key']</code>.
+    Eso significa que una llamada <b>desde el navegador</b> (fetch/XHR) con
+    <code class="inl">x-service-key</code> será <b>rechazada en el preflight</b>. No afecta a
+    las llamadas desde backend ni al canal TCP. Si necesitas <code>x-service-key</code> desde el
+    frontend, hay que añadirlo a <code>allowedHeaders</code> en auth-ms.
+    <p class="src" style="margin:2mm 0 0">Origen: <code>auth-ms/src/main.ts:54-59</code></p>
+  </div>
+</div>
+
+<!-- ============================= S5 ============================= -->
+<div class="section" id="s5">
+  <h2 class="sec"><span class="sec-num">05</span> Vía C — Conexión TCP</h2>
+  <p class="sec-sub">Canal interno optimizado para llamadas entre microservicios</p>
+
+  <p>
+    El canal TCP usa JSON sobre un socket persistente, con comunicación request/response por
+    <code class="inl">cmd</code>. Es el canal que ya usan <b>educative-backend</b> y
+    <b>api-whatsapp</b> para validar tokens en cada petición y consultar políticas.
+  </p>
+
+  <h3>5.1 Módulo cliente TCP</h3>
+  <p>Versión básica (sin TLS), tal como la usa <code class="inl">educative-backend</code>:</p>
+  <pre><span class="k">import</span> { Global, Module } <span class="k">from</span> <span class="s">'@nestjs/common'</span>;
+<span class="k">import</span> { ClientsModule, Transport } <span class="k">from</span> <span class="s">'@nestjs/microservices'</span>;
+<span class="k">import</span> { ConfigService } <span class="k">from</span> <span class="s">'@nestjs/config'</span>;
+
+@<span class="f">Global</span>()
+@<span class="f">Module</span>({
+  <span class="f">imports</span>: [
+    <span class="f">ClientsModule</span>.registerAsync([
+      {
+        <span class="f">name</span>: <span class="s">'USER_SERVICE'</span>,
+        <span class="f">useFactory</span>: (configService: ConfigService) =&gt; ({
+          <span class="f">transport</span>: Transport.TCP,
+          <span class="f">options</span>: {
+            <span class="f">host</span>: configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'USER_MS_HOST'</span>) || <span class="s">'127.0.0.1'</span>,
+            <span class="f">port</span>: configService.get&lt;<span class="k">number</span>&gt;(<span class="s">'USER_MS_PORT'</span>) || <span class="k">3011</span>,
+          },
+        }),
+        <span class="f">inject</span>: [ConfigService],
+      },
+    ]),
+  ],
+  <span class="f">exports</span>: [ClientsModule],
+})
+<span class="k">export class</span> <span class="f">TcpClientModule</span> {}</pre>
+  <p class="src">Origen: <code>platformEducativa/educative-backend/src/core/tcp/tcp.module.ts</code></p>
+
+  <p>Versión con soporte TLS/mTLS, tal como la usa <code class="inl">api-whatsapp</code>:</p>
+  <pre><span class="k">import</span> { readFileSync } <span class="k">from</span> <span class="s">'fs'</span>;
+
+<span class="k">function</span> <span class="f">buildTlsOptions</span>(configService: ConfigService) {
+  <span class="k">const</span> tlsEnabled = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_ENABLED'</span>) === <span class="s">'true'</span>;
+  <span class="k">if</span> (!tlsEnabled) <span class="k">return undefined</span>;
+
+  <span class="k">const</span> keyPath  = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_KEY_PATH'</span>);
+  <span class="k">const</span> certPath = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_CERT_PATH'</span>);
+  <span class="k">const</span> caPath   = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_CA_PATH'</span>);
+
+  <span class="k">const</span> tlsOptions: Record&lt;string, Buffer&gt; = {};
+  <span class="k">if</span> (caPath) tlsOptions.ca = <span class="f">readFileSync</span>(caPath);
+  <span class="c">// mTLS: el cliente presenta su propio certificado</span>
+  <span class="k">if</span> (keyPath &amp;&amp; certPath) {
+    tlsOptions.key  = <span class="f">readFileSync</span>(keyPath);
+    tlsOptions.cert = <span class="f">readFileSync</span>(certPath);
+  }
+  <span class="k">return</span> tlsOptions;
+}
+
+@<span class="f">Global</span>()
+@<span class="f">Module</span>({
+  <span class="f">imports</span>: [
+    <span class="f">ClientsModule</span>.registerAsync([
+      {
+        <span class="f">name</span>: <span class="s">'USER_SERVICE'</span>,
+        <span class="f">useFactory</span>: (configService: ConfigService) =&gt; {
+          <span class="k">const</span> tlsOptions = buildTlsOptions(configService);
+          <span class="k">return</span> {
+            <span class="f">transport</span>: Transport.TCP,
+            <span class="f">options</span>: {
+              <span class="f">host</span>: configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'USER_MS_HOST'</span>) || <span class="s">'127.0.0.1'</span>,
+              <span class="f">port</span>: Number(configService.get&lt;<span class="k">string</span> | <span class="k">number</span>&gt;(<span class="s">'USER_MS_PORT'</span>) || <span class="k">3011</span>),
+              ...(tlsOptions ? { tlsOptions } : {}),
+            },
+          };
+        },
+        <span class="f">inject</span>: [ConfigService],
+      },
+    ]),
+  ],
+  <span class="f">exports</span>: [ClientsModule],
+})
+<span class="k">export class</span> <span class="f">TcpClientModule</span> {}</pre>
+  <p class="src">Origen: <code>nuevaInfra/api-whatsapp/apps/api/src/core/tcp/tcp.module.ts</code></p>
+
+  <div class="box info">
+    <span class="bt">Registra el módulo una sola vez en la raíz de tu app</span>
+    Al estar decorated con <code class="inl">@Global()</code> y exportar <code class="inl">ClientsModule</code>,
+    el token <code class="inl">'USER_SERVICE'</code> queda disponible en toda la aplicación.
+    Solo necesitas importarlo una vez en tu <code class="inl">AppModule</code>.
+  </div>
+
+  <h3>5.2 Configuración TLS en el servidor</h3>
+  <pre><span class="k">const</span> tlsEnabled = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_ENABLED'</span>, <span class="s">'false'</span>) === <span class="s">'true'</span>;
+<span class="k">const</span> tlsMutual  = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_MUTUAL'</span>,  <span class="s">'false'</span>) === <span class="s">'true'</span>;
+
+<span class="k">let</span> tlsOptions: <span class="k">any</span>;
+<span class="k">if</span> (tlsEnabled) {
+  <span class="k">const</span> keyPath  = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_KEY_PATH'</span>);
+  <span class="k">const</span> certPath = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_CERT_PATH'</span>);
+  <span class="k">const</span> caPath   = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_CA_PATH'</span>);
+
+  <span class="k">if</span> (!keyPath || !certPath) {
+    <span class="k">throw new</span> Error(<span class="s">'TLS_ENABLED=true requiere TLS_KEY_PATH y TLS_CERT_PATH configurados'</span>);
+  }
+
+  tlsOptions = {
+    <span class="f">key</span>:  fsExtra.readFileSync(keyPath),
+    <span class="f">cert</span>: fsExtra.readFileSync(certPath),
+    ...(caPath ? { <span class="f">ca</span>: fsExtra.readFileSync(caPath) } : {}),
+    <span class="f">requestCert</span>: tlsMutual,
+    <span class="f">rejectUnauthorized</span>: tlsMutual,
+  };
+}</pre>
+  <p class="src">Origen: <code>auth-ms/src/main.ts:115-137</code></p>
+
+  <div class="two-col">
+    <div class="box ok" style="margin-top:0">
+      <span class="bt">TLS simple</span>
+      <code class="inl">TLS_ENABLED=true</code> + key y cert. Cifra el canal, pero cualquier servicio con la clave puede conectarse.
+    </div>
+    <div class="box info" style="margin-top:0">
+      <span class="bt">mTLS</span>
+      Añade <code class="inl">TLS_MUTUAL=true</code> y el <code class="inl">TLS_CA_PATH</code>. El servidor exige certificado de cliente.
+    </div>
+  </div>
+
+  <h3>5.3 La regla de oro: <code>serviceKey</code> siempre</h3>
+  <div class="box error">
+    <span class="bt">Todos los comandos TCP exigen <code>serviceKey</code> en el payload</span>
+    Un <code class="inl">@MessagePattern</code> sin la clave válida responde
+    <code class="inl">401 Invalid service credentials</code>. No hay excepción: es un guard global
+    aplicado a todo handler RPC. La comparación es en tiempo constante.
+  </div>
+  <pre><span class="c">// Canal TCP: TODOS los handlers @MessagePattern exigen serviceKey en el payload</span>
+<span class="k">if</span> (context.getType() === <span class="s">'rpc'</span>) {
+  <span class="k">const</span> data = context.switchToRpc().getData();
+  <span class="k">return this</span>.verifyKey(data?.serviceKey);
+}
+
+<span class="c">// Canal HTTP: exige la clave solo en rutas marcadas con @ServiceRoute()</span>
+<span class="k">const</span> isServiceRoute = <span class="k">this</span>.reflector.getAllAndOverride&lt;<span class="k">boolean</span>&gt;(
+  SERVICE_ROUTE_KEY, [context.getHandler(), context.getClass()]);
+
+<span class="k">if</span> (!isServiceRoute) <span class="k">return true</span>;</pre>
+  <p class="src">Origen: <code>auth-ms/src/core/guards/service-auth.guard.ts:19-39</code></p>
+
+  <h3>5.4 Cómo se hacen las llamadas</h3>
+  <div class="two-col">
+    <div>
+      <h4>Ejemplo A — educative-backend</h4>
+      <pre>userResponse = <span class="k">await</span> firstValueFrom(
+  <span class="k">this</span>.userClient.<span class="f">send</span>(
+    { <span class="f">cmd</span>: <span class="s">'getUserProfile'</span> },
+    {
+      <span class="f">serviceKey</span>: <span class="k">this</span>.configService.get(<span class="s">'SERVICE_API_KEY'</span>),
+      <span class="f">_id</span>: userId,
+    },
+  ),
+);</pre>
+      <p class="src">Origen: <code>platformEducativa/educative-backend/src/core/services/auth.service.ts:62-69</code></p>
+    </div>
+    <div>
+      <h4>Ejemplo B — api-whatsapp</h4>
+      <pre><span class="k">const</span> serviceKey = <span class="k">this</span>.configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'SERVICE_API_KEY'</span>);
+<span class="k">if</span> (!serviceKey) {
+  <span class="k">throw new</span> UnauthorizedException(<span class="s">'SERVICE_API_KEY no configurada'</span>);
+}
+
+<span class="f">send</span>&lt;JwtPayload&gt;(
+  { <span class="f">cmd</span>: <span class="s">'findUserById'</span> },
+  { serviceKey, <span class="f">id</span>: _id },
+);</pre>
+      <p class="src">Origen: <code>nuevaInfra/api-whatsapp/apps/api/src/core/strategies/jwt.strategy.ts:29-34</code></p>
+    </div>
+  </div>
+
+  <h3>5.5 Catálogo completo de comandos TCP</h3>
+  <p>Los 45 comandos disponibles, agrupados por dominio. <b>Todos requieren <code class="inl">serviceKey</code>.</b></p>
+  <p><b>Revocación de sesiones:</b> <code class="inl">validateUser</code> y <code class="inl">validateSession</code> validan la sesión contra auth-ms. Si la sesión fue revocada (o el token no tiene <code class="inl">sid</code>), <code class="inl">validateUser</code> lanza <code class="inl">401</code> y <code class="inl">validateSession</code> devuelve <code class="inl">{ active: false }</code>. Las apps externas deben tratar un <code class="inl">401</code> como cierre de sesión. No caches la validación de autenticación (o usa un TTL muy corto).</p>
+
+  <h4>Dominio auth — <code>auth-ms/src/auth/auth.controller.ts:343-371</code></h4>
+  <table>
+    <thead><tr><th style="width:22%">cmd</th><th style="width:40%">Payload</th><th>Retorna</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">login</td><td class="mono">{ serviceKey, email, password, meta?, ip? }</td><td>Resultado del login (accessToken, refreshToken, mustChangePassword, tenantConfig)</td></tr>
+      <tr><td class="mono">validateUser</td><td class="mono">{ serviceKey, token }</td><td><code>{ user, meta: { totalData, id, valid } }</code>. <b>Rechaza (401) si la sesión fue revocada o el token no tiene <code class="inl">sid</code>.</b></td></tr>
+      <tr><td class="mono">validateSession</td><td class="mono">{ serviceKey, token }</td><td><code>{ active, valid, userId? }</code> (no lanza). Útil para chequeos booleanos.</td></tr>
+      <tr><td class="mono">refresh</td><td class="mono">{ serviceKey, refreshToken }</td><td>Nuevo access token + payload de identidad</td></tr>
+      <tr><td class="mono">changePassword</td><td class="mono">{ serviceKey, id?, currentPassword, newPassword }</td><td>Confirmación del cambio</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Dominio users — <code>auth-ms/src/users/users.controller.ts:710-791</code></h4>
+  <table>
+    <thead><tr><th style="width:24%">cmd</th><th style="width:42%">Payload</th><th>Retorna</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">createExternalUser</td><td class="mono">{ serviceKey, …CreateUserDto, tenantId?, userId? }</td><td>Usuario creado (respeta límites del tenant)</td></tr>
+      <tr><td class="mono">createUser</td><td class="mono">{ serviceKey, …CreateUserDto }</td><td>Objeto de creación del usuario</td></tr>
+      <tr><td class="mono">findAllUsers</td><td class="mono">{ serviceKey, user? }</td><td>Listado de usuarios del contexto</td></tr>
+      <tr><td class="mono">findUsersByTenant</td><td class="mono">{ serviceKey, user?, onlyAgents? }</td><td>Usuarios activos del tenant</td></tr>
+      <tr><td class="mono">findUsersByPagination</td><td class="mono">{ serviceKey, user?, page?, limit? }</td><td>Listado paginado</td></tr>
+      <tr><td class="mono">findUserById</td><td class="mono">{ serviceKey, id }</td><td>Un usuario</td></tr>
+      <tr><td class="mono">getUserProfile</td><td class="mono">{ serviceKey, _id }</td><td>Perfil con módulos, roles y permisos</td></tr>
+      <tr><td class="mono">findUsersByDate</td><td class="mono">{ serviceKey, user?, startDate, endDate }</td><td>Usuarios creados en el rango</td></tr>
+      <tr><td class="mono">updateUser</td><td class="mono">{ serviceKey, id, updateUserDto }</td><td>Usuario actualizado</td></tr>
+      <tr><td class="mono">removeUser</td><td class="mono">{ serviceKey, id }</td><td>Eliminación lógica</td></tr>
+      <tr><td class="mono">softRemoveUser</td><td class="mono">{ serviceKey, id }</td><td>Eliminación lógica explícita</td></tr>
+      <tr><td class="mono">hardRemoveUser</td><td class="mono">{ serviceKey, id }</td><td>Eliminación física</td></tr>
+    </tbody>
+  </table>
+  <p class="src">Nota: <code>findUserById</code>, <code>removeUser</code>, <code>softRemoveUser</code> y <code>hardRemoveUser</code> aceptan tanto <code>{ id }</code> como el id como valor directo (<code>payload?.id ?? payload</code>).</p>
+
+  <h4>Dominio roles — <code>auth-ms/src/roles/roles.controller.ts:210-236</code></h4>
+  <table>
+    <thead><tr><th style="width:24%">cmd</th><th style="width:42%">Payload</th><th>Retorna</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">createRole</td><td class="mono">{ serviceKey, …CreateRoleDto }</td><td>Rol creado</td></tr>
+      <tr><td class="mono">findAllRoles</td><td class="mono">{ serviceKey }</td><td>Todos los roles (ignora el resto del payload)</td></tr>
+      <tr><td class="mono">findOneRole</td><td class="mono">{ serviceKey, id }</td><td>Un rol</td></tr>
+      <tr><td class="mono">updateRole</td><td class="mono">{ serviceKey, id, updateRoleDto }</td><td>Rol actualizado</td></tr>
+      <tr><td class="mono">removeRole</td><td class="mono">{ serviceKey, id }</td><td>Rol eliminado</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Dominio permissions — <code>auth-ms/src/permissions/permissions.controller.ts:222-256</code></h4>
+  <table>
+    <thead><tr><th style="width:24%">cmd</th><th style="width:42%">Payload</th><th>Retorna</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">createPermission</td><td class="mono">{ serviceKey, …CreatePermissionDto }</td><td>Permiso creado</td></tr>
+      <tr><td class="mono">findAllPermissions</td><td class="mono">{ serviceKey }</td><td>Todos los permisos</td></tr>
+      <tr><td class="mono">findOnePermission</td><td class="mono">{ serviceKey, id }</td><td>Un permiso</td></tr>
+      <tr><td class="mono">updatePermission</td><td class="mono">{ serviceKey, id, updatePermissionDto }</td><td>Permiso actualizado</td></tr>
+      <tr><td class="mono">removePermission</td><td class="mono">{ serviceKey, id }</td><td>Permiso eliminado</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Dominio modules — <code>auth-ms/src/modules/modules.controller.ts:228-256</code></h4>
+  <table>
+    <thead><tr><th style="width:24%">cmd</th><th style="width:42%">Payload</th><th>Retorna</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">createModule</td><td class="mono">{ serviceKey, …CreateModuleDto }</td><td>Módulo creado</td></tr>
+      <tr><td class="mono">findAllModules</td><td class="mono">{ serviceKey }</td><td>Todos los módulos</td></tr>
+      <tr><td class="mono">findOneModule</td><td class="mono">{ serviceKey, id }</td><td>Un módulo</td></tr>
+      <tr><td class="mono">updateModule</td><td class="mono">{ serviceKey, id, updateModuleDto }</td><td>Módulo actualizado</td></tr>
+      <tr><td class="mono">removeModule</td><td class="mono">{ serviceKey, id }</td><td>Módulo eliminado</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Dominio companies — <code>auth-ms/src/companies/companies.controller.ts:299-344</code></h4>
+  <table>
+    <thead><tr><th style="width:24%">cmd</th><th style="width:42%">Payload</th><th>Retorna</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">createCompany</td><td class="mono">{ serviceKey, …CreateCompanyDto }</td><td>Empresa creada</td></tr>
+      <tr><td class="mono">findAllCompanies</td><td class="mono">{ serviceKey }</td><td>Todas las empresas</td></tr>
+      <tr><td class="mono">findOneCompany</td><td class="mono">{ serviceKey, id }</td><td>Una empresa</td></tr>
+      <tr><td class="mono">updateCompany</td><td class="mono">{ serviceKey, id, updateCompanyDto }</td><td>Empresa actualizada</td></tr>
+      <tr><td class="mono">removeCompany</td><td class="mono">{ serviceKey, id }</td><td>Empresa eliminada</td></tr>
+      <tr><td class="mono">blockCompany</td><td class="mono">{ serviceKey, id, reason?, until? }</td><td>Bloquea la empresa. Sin <code>until</code> = indefinido</td></tr>
+      <tr><td class="mono">unblockCompany</td><td class="mono">{ serviceKey, id }</td><td>Desbloquea la empresa</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Dominio tenant-config — <code>auth-ms/src/tenant-config/tenant-config.controller.ts:262-311</code></h4>
+  <table>
+    <thead><tr><th style="width:26%">cmd</th><th style="width:40%">Payload</th><th>Retorna</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">getTenantConfig</td><td class="mono">{ serviceKey, tenantId?, company? }</td><td>Config resuelta (defaults + valores del tenant)</td></tr>
+      <tr><td class="mono">getTenantPolicyCatalog</td><td class="mono">{ serviceKey }</td><td>Catálogo de definiciones de políticas</td></tr>
+      <tr><td class="mono">reportTenantUsage</td><td class="mono">{ serviceKey, tenantId, period, metrics, reportId }</td><td>Consumo acumulado (idempotente por reportId)</td></tr>
+      <tr><td class="mono">getTenantUsage</td><td class="mono">{ serviceKey, tenantId, period? }</td><td>Consumo del período</td></tr>
+      <tr><td class="mono">setTenantConfig</td><td class="mono">{ serviceKey, tenantId, company?, isActive?, values? }</td><td>Config actualizada (SuperAdmin)</td></tr>
+      <tr><td class="mono">upsertPolicyDefinition</td><td class="mono">{ serviceKey, definition }</td><td>Definición creada o editada (SuperAdmin)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.6 Script de prueba en Node puro (sin NestJS)</h3>
+  <p>Para verificar la conectividad y la clave antes de integrar en tu backend:</p>
+  <pre><span class="c">// test-tcp.js  →  node test-tcp.js</span>
+<span class="k">const</span> net = <span class="f">require</span>(<span class="s">'net'</span>);
+
+<span class="k">const</span> payload = JSON.stringify({
+  <span class="f">pattern</span>: { <span class="f">cmd</span>: <span class="s">'getTenantPolicyCatalog'</span> },
+  <span class="f">data</span>: { <span class="f">serviceKey</span>: process.env.SERVICE_API_KEY },
+});
+
+<span class="k">const</span> client = net.<span class="f">connect</span>(
+  { <span class="f">host</span>: process.env.USER_MS_HOST || <span class="s">'127.0.0.1'</span>, <span class="f">port</span>: <span class="k">Number</span>(process.env.USER_MS_PORT || <span class="k">3011</span>) },
+  () =&gt; { console.<span class="f">log</span>(<span class="s">'conectado, enviando…'</span>); client.<span class="f">write</span>(payload + <span class="s">'\n'</span>); },
+);
+
+client.<span class="f">on</span>(<span class="s">'data'</span>, (d) =&gt; console.<span class="f">log</span>(<span class="s">'respuesta:'</span>, d.toString()));
+client.<span class="f">on</span>(<span class="s">'error'</span>,  (e) =&gt; console.<span class="f">error</span>(<span class="s">'error:'</span>, e.message));
+client.<span class="f">on</span>(<span class="s">'close'</span>, () =&gt; client.<span class="f">end</span>());</pre>
+
+  <div class="box ok">
+    <span class="bt">Si la respuesta es <code>Invalid service credentials</code></span>
+    El socket <b>conectó bien</b> (la red y el puerto 3011 están bien). El problema es el valor de
+    <code class="inl">SERVICE_API_KEY</code>: no coincide con el del servidor, o no llegó en el payload.
+  </div>
+</div>
+
+<!-- ============================= S6 ============================= -->
+<div class="section" id="s6">
+  <h2 class="sec"><span class="sec-num">06</span> Payload del JWT y contrato de errores</h2>
+  <p class="sec-sub">Qué contiene el token y por qué el login puede fallar</p>
+
+  <h3>6.1 Claims del access token</h3>
+  <p>El token contiene <b>únicamente identidad</b>. No incluye módulos, roles ni permisos:</p>
+  <pre><span class="k">export function</span> <span class="f">buildIdentityPayload</span>(user: <span class="k">any</span>, sid?: <span class="k">string</span>): IdentityPayload {
+  <span class="k">return</span> {
+    <span class="f">_id</span>:      user._id,
+    <span class="f">name</span>:     user.name,
+    <span class="f">lastName</span>: user.lastName,
+    <span class="f">email</span>:    user.email,
+    <span class="f">username</span>: user.username,
+    <span class="f">isActived</span>: user.isActived,
+    <span class="f">company</span>:  user.company,
+    <span class="f">tenantId</span>: user.tenantId,
+    <span class="f">isSuperAdmin</span>: user.isSuperAdmin,
+    <span class="f">isTrial</span>:  user.isTrial === <span class="k">true</span>,
+    <span class="f">trialStartedAt</span>: user.trialStartedAt ?? <span class="k">null</span>,
+    <span class="f">trialEndsAt</span>:    user.trialEndsAt ?? <span class="k">null</span>,
+    ...(sid ? { <span class="f">sid</span> } : {}),
+  };
+}</pre>
+  <p class="src">Origen: <code>auth-ms/src/auth/helpers/identity-payload.helper.ts:22-38</code></p>
+
+  <div class="box info">
+    <span class="bt">Por qué el token es pequeño a propósito</span>
+    Históricamente el JWT incluía el árbol completo de permisos, módulos, rutas e iconos
+    (frecuentemente &gt; 16&nbsp;KB). Al pasarlo por la URL en el flujo SSO eso provocaba
+    <b>431 Request Header Fields Too Large</b> y <b>414 URI Too Long</b> en Node, Nginx y AWS.
+    La separación identidad/autorización lo elimina y reduce el ancho de banda de cada petición.
+  </div>
+
+  <h3>6.2 Contrato de errores del login</h3>
+  <p>El login puede responder <code class="inl">403</code> con <b>varios</b> motivos simultáneos, en
+  precedencia <b>empresa → usuario → prueba → inactivo</b>:</p>
+  <pre>{
+  <span class="f">"message"</span>: <span class="s">"Tu empresa está bloqueada."</span>,
+  <span class="f">"code"</span>: <span class="s">"COMPANY_BLOCKED"</span>,
+  <span class="f">"errors"</span>: [
+    {
+      <span class="f">"code"</span>: <span class="s">"COMPANY_BLOCKED"</span>,
+      <span class="f">"message"</span>: <span class="s">"..."</span>,
+      <span class="f">"details"</span>: { <span class="f">"blockType"</span>: <span class="s">"temporary"</span>, <span class="f">"until"</span>: <span class="s">"..."</span> }
+    }
+  ],
+  <span class="f">"status"</span>: <span class="s">"Error"</span>,
+  <span class="f">"data"</span>: <span class="k">null</span>,
+  <span class="f">"meta"</span>: { <span class="f">"timestamp"</span>: <span class="s">"..."</span>, <span class="f">"path"</span>: <span class="s">"/api/auth/login"</span> }
+}</pre>
+  <table>
+    <thead><tr><th style="width:34%">Código</th><th>Significado</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">COMPANY_BLOCKED</td><td>La empresa está bloqueada. Ningún usuario del tenant puede iniciar sesión.</td></tr>
+      <tr><td class="mono">USER_BLOCKED_TEMPORARY</td><td>Usuario bloqueado hasta una fecha (por intentos fallidos o acción de un admin).</td></tr>
+      <tr><td class="mono">USER_BLOCKED_INDEFINITE</td><td>Bloqueo permanente, hasta que un administrador lo levante.</td></tr>
+      <tr><td class="mono">TRIAL_EXPIRED</td><td>El período de prueba del usuario venció. No se muta el usuario; solo se bloquea el login.</td></tr>
+      <tr><td class="mono">USER_INACTIVE</td><td>El usuario existe pero está desactivado.</td></tr>
+    </tbody>
+  </table>
+  <p class="src">Fuente: <code>CONSUMIR_TENANT_CONFIG.md</code> §"Contrato de error de login"</p>
+
+  <h3>6.3 Primer acceso y cambio de contraseña</h3>
+  <p>Si el login responde <code class="inl">mustChangePassword: true</code>, el usuario debe pasar por
+  <code class="inl">/change-password</code> antes de usar la aplicación. El backend bloquea los endpoints
+  sensibles con un interceptor global mientras la bandera siga activa.</p>
+  <table>
+    <thead><tr><th>Flujo</th><th style="width:22%">mustChangePassword</th><th style="width:18%">isNewUser</th></tr></thead>
+    <tbody>
+      <tr><td>Crear (invitación o contraseña temporal)</td><td class="c">true</td><td class="c">true</td></tr>
+      <tr><td>Establecer por token de invitación</td><td class="c">false</td><td class="c">false</td></tr>
+      <tr><td>Recuperación / reset de admin</td><td class="c">true</td><td class="c">true</td></tr>
+      <tr><td>Cambio de contraseña completado</td><td class="c">false</td><td class="c">false</td></tr>
+    </tbody>
+  </table>
+  <p class="src"><code>mustChangePassword</code> es la bandera canónica. <code>isNewUser</code> se mantiene por compatibilidad.</p>
+</div>
+
+<!-- ============================= S7 ============================= -->
+<div class="section" id="s7">
+  <h2 class="sec"><span class="sec-num">07</span> Políticas y límites por tenant</h2>
+  <p class="sec-sub">auth-ms define la política; cada aplicación la aplica en su punto de uso</p>
+
+  <div class="diagram">
+    <div class="dg-title">Separación de responsabilidades</div>
+    <div class="row">
+      <div class="node accent">auth-ms<br><span class="nsub">Define límites, cuotas, features, timezone</span></div>
+      <div class="arrow">→</div>
+      <div class="node">Tu aplicación<br><span class="nsub">Consulta, cachea y aplica localmente</span></div>
+      <div class="arrow">→</div>
+      <div class="node warn-n">Tu usuario<span class="nsub">Solo ve lo que su tenant permite</span></div>
+    </div>
+  </div>
+
+  <h3>7.1 Estructura de la configuración</h3>
+  <pre>{
+  <span class="f">"tenantId"</span>: <span class="s">"0000000"</span>,
+  <span class="f">"company"</span>:  <span class="s">"BPONET"</span>,
+  <span class="f">"version"</span>:  <span class="k">4</span>,
+  <span class="f">"updatedAt"</span>: <span class="s">"2026-09-24T..."</span>,
+
+  <span class="f">"general"</span>: {
+    <span class="f">"timezone"</span>: <span class="s">"America/Bogota"</span>,   <span class="c">// IANA recomendado</span>
+    <span class="f">"locale"</span>:   <span class="s">"es-CO"</span>
+  },
+
+  <span class="f">"channels"</span>: {
+    <span class="f">"sms"</span>:   { <span class="f">"enabled"</span>: <span class="k">true</span>,  <span class="f">"monthlyLimit"</span>: <span class="k">3000</span> },
+    <span class="f">"audio"</span>: { <span class="f">"enabled"</span>: <span class="k">true</span>,  <span class="f">"monthlyLimit"</span>: <span class="k">1000</span> }
+  },
+
+  <span class="f">"messages"</span>: {
+    <span class="f">"bolsa"</span>: {
+      <span class="f">"utilidad"</span>: <span class="k">1000</span>,
+      <span class="f">"marketingComercial"</span>: <span class="k">1000</span>,
+      <span class="f">"autenticacion"</span>: <span class="k">1000</span>,
+      <span class="f">"servicio"</span>: <span class="k">1000</span>
+    }
+  },
+
+  <span class="f">"features"</span>: {
+    <span class="f">"crmInstitucional"</span>: <span class="k">true</span>,
+    <span class="f">"pbx"</span>: <span class="k">false</span>
+  },
+
+  <span class="f">"limits"</span>: {
+    <span class="f">"maxUsers"</span>: <span class="k">0</span>,                 <span class="c">// 0 = ilimitado</span>
+    <span class="f">"roles"</span>: { <span class="s">"AGE"</span>: <span class="k">50</span> },
+    <span class="f">"maxChatbotFlows"</span>: <span class="k">20</span>,
+    <span class="f">"trialDays"</span>: <span class="k">7</span>
+  },
+
+  <span class="f">"security"</span>: {
+    <span class="f">"maxFailedAttempts"</span>: <span class="k">5</span>,          <span class="c">// 0 = ilimitados</span>
+    <span class="f">"lockMinutes"</span>: <span class="k">15</span>            <span class="c">// 0 = bloqueo indefinido</span>
+  }
+}</pre>
+  <p class="src">Fuente: <code>CONSUMIR_TENANT_CONFIG.md</code> §1</p>
+
+  <div class="box ok">
+    <span class="bt">auth-ms es la autoridad sobre los límites de usuarios</span>
+    El microservicio aplica <code>maxUsers</code> y <code>limits.roles.&lt;CODE&gt;</code> de forma
+    central y <b>fail-closed</b> al crear usuarios (individual, carga masiva y
+    <code>createExternalUser</code>). Si el tenant excede el tope, responde
+    <b>409 Conflict</b> con el límite en el mensaje. Tu aplicación puede pre-validar con
+    <code>getTenantConfig</code> para buena experiencia de usuario, pero debe manejar el
+    <code>409</code> y no debe crear usuarios por fuera de auth-ms.
+  </div>
+
+  <h3>7.2 Patrón de consumo recomendado</h3>
+  <div class="steps">
+    <div class="step">
+      <h4>Consultar y cachear</h4>
+      <p>Mantén la config en memoria con TTL de 5–15 minutos por <code class="inl">tenantId</code>. No consultes en cada operación de negocio.</p>
+    </div>
+    <div class="step">
+      <h4>Invalidar por versión</h4>
+      <p>Usa <code class="inl">version</code> / <code class="inl">updatedAt</code> para invalidar la caché cuando el SuperAdmin cambie una política.</p>
+    </div>
+    <div class="step">
+      <h4>Resistir la caída del servicio</h4>
+      <p>Si auth-ms no responde, aplica <b>fail-open</b> (permitir la operación) y deja un log indicando que se usó caché o defaults. Así una caída del servicio de autenticación no detiene tu operación de negocio.</p>
+    </div>
+    <div class="step">
+      <h4>Reportar el consumo</h4>
+      <p>Envía deltas por lote con <code class="inl">reportId</code> (UUID) para idempotencia. Calcula el corte mensual en la <b>zona horaria del tenant</b>, no en UTC.</p>
+    </div>
+  </div>
+
+  <div class="box warn">
+    <span class="bt">Convención de claves</span>
+    <code class="inl">tenantId</code> es el <code class="inl">id</code> de la Company (ej. <code>0000000</code>), no su <code class="inl">_id</code> de Mongo.
+    <code class="inl">company</code> es el nombre (ej. <code>BPONET</code>).
+  </div>
+</div>
+
+<!-- ============================= S8 ============================= -->
+<div class="section" id="s8">
+  <h2 class="sec"><span class="sec-num">08</span> Alta de una aplicación nueva</h2>
+  <p class="sec-sub">Checklist completo para conectar una aplicación desde cero</p>
+
+  <table>
+    <thead><tr><th style="width:6%">#</th><th style="width:30%">Paso</th><th style="width:20%">Responsable</th><th>Detalle</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="c"><b>1</b></td>
+        <td><b>Registrar los orígenes SSO</b></td>
+        <td>Equipo auth-ms</td>
+        <td>Añadir tu dominio a <code class="inl">SSO_ALLOWED_ORIGINS</code> en el <code class="inl">.env</code> de auth-ms (separado por comas) y reiniciar el servicio. <b>Sin esto, la redirección no funcionará.</b></td>
+      </tr>
+      <tr>
+        <td class="c"><b>2</b></td>
+        <td><b>Acordar la SERVICE_API_KEY</b></td>
+        <td>Equipo auth-ms + seguridad</td>
+        <td>Generar un secreto fuerte y compartirlo por un canal seguro. Debe ser <b>idéntico</b> en auth-ms y en tu aplicación. No la subas a un repositorio.</td>
+      </tr>
+      <tr>
+        <td class="c"><b>3</b></td>
+        <td><b>Crear el módulo en auth-ms</b></td>
+        <td>SuperAdmin</td>
+        <td>Crear el módulo con las rutas de tu aplicación y asignarlo a los roles que deban acceder. Anota el <code class="inl">name</code> exacto (ej. <code>crmEducative</code>): será tu <code class="inl">storageKey</code>.</td>
+      </tr>
+      <tr>
+        <td class="c"><b>4</b></td>
+        <td><b>Configurar las variables del cliente</b></td>
+        <td>Tu equipo</td>
+        <td><code class="inl">USER_MS_HOST</code>, <code class="inl">USER_MS_PORT</code>, <code class="inl">SERVICE_API_KEY</code> y, si aplica, <code class="inl">TLS_*</code>.</td>
+      </tr>
+      <tr>
+        <td class="c"><b>5</b></td>
+        <td><b>Configurar el frontend</b></td>
+        <td>Tu equipo</td>
+        <td>Definir <code class="inl">authUrl</code>, <code class="inl">redirectUri</code>, <code class="inl">url</code> y <code class="inl">storageKey</code> en tu <code class="inl">environment</code>. Ver sección 3.1.</td>
+      </tr>
+      <tr>
+        <td class="c"><b>6</b></td>
+        <td><b>Implementar el flujo del frontend</b></td>
+        <td>Tu equipo</td>
+        <td>Redirección, guard, <code class="inl">processAuthData</code>, validación de módulo e interceptor de refresh. Ver sección 3.2.</td>
+      </tr>
+      <tr>
+        <td class="c"><b>7</b></td>
+        <td><b>Registrar el cliente TCP</b> (si aplica)</td>
+        <td>Tu equipo</td>
+        <td>Añadir <code class="inl">TcpClientModule</code> al <code class="inl">AppModule</code>. Ver sección 5.1.</td>
+      </tr>
+      <tr>
+        <td class="c"><b>8</b></td>
+        <td><b>Validar la política de CORS</b></td>
+        <td>Equipo auth-ms</td>
+        <td>Si tu frontend llama por REST, asegurar que tu origen esté en <code class="inl">CORS_ORIGIN</code> de auth-ms.</td>
+      </tr>
+      <tr>
+        <td class="c"><b>9</b></td>
+        <td><b>Probar extremo a extremo</b></td>
+        <td>Tu equipo</td>
+        <td>Ejecutar los comandos de la sección 9.1: login, perfil, refresh, política del tenant y un comando TCP.</td>
+      </tr>
+      <tr>
+        <td class="c"><b>10</b></td>
+        <td><b>Asignar usuarios de prueba</b></td>
+        <td>SuperAdmin</td>
+        <td>Crear usuarios en la empresa correcta y asignarles un rol que incluya el módulo. Verifica también los límites del tenant (<code class="inl">maxUsers</code>, cuotas) para que no bloqueen las pruebas.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="box error">
+    <span class="bt">Los dos errores más comunes al integrar por primera vez</span>
+    <b>1.</b> El dominio no está en <code class="inl">SSO_ALLOWED_ORIGINS</code> → el usuario se autentica
+    pero nunca llega a tu app.<br>
+    <b>2.</b> El <code class="inl">name</code> del módulo en auth-ms no coincide con
+    <code class="inl">storageKey</code> → el usuario entra pero ve
+    "No tienes permisos para acceder a esta módulo".
+  </div>
+</div>
+
+<!-- ============================= S9 ============================= -->
+<div class="section" id="s9">
+  <h2 class="sec"><span class="sec-num">09</span> Pruebas y troubleshooting</h2>
+  <p class="sec-sub">Cómo verificar la integración y qué hacer cuando falla</p>
+
+  <h3>9.1 Comandos de verificación</h3>
+  <pre><span class="c"># 1) Login por REST → debe devolver accessToken y refreshToken</span>
+curl -X POST <span class="s">"$AUTH_URL/auth/login"</span> \
+  -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">'{"email":"usuario@empresa.com","password":"clave"}'</span>
+
+<span class="c"># 2) Perfil con el token → debe devolver modules, roles y permissions</span>
+curl <span class="s">"$AUTH_URL/users/profile"</span> -H <span class="s">"Authorization: Bearer $ACCESS_TOKEN"</span>
+
+<span class="c"># 3) Refresco → devuelve un accessToken nuevo</span>
+curl -X POST <span class="s">"$AUTH_URL/auth/refresh"</span> \
+  -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">"{\"refreshToken\":\"$REFRESH_TOKEN\"}"</span>
+
+<span class="c"># 4) Perfil como servicio (clave compartida)</span>
+curl <span class="s">"$AUTH_URL/users/profile?userId=$USER_ID"</span> -H <span class="s">"x-service-key: $SERVICE_API_KEY"</span>
+
+<span class="c"># 5) Política del tenant</span>
+curl <span class="s">"$AUTH_URL/tenants/config?tenantId=0000000"</span> -H <span class="s">"x-service-key: $SERVICE_API_KEY"</span>
+
+<span class="c"># 6) TCP → ejecutar el script de la sección 5.6</span>
+node test-tcp.js</pre>
+
+  <h3>9.2 Tabla de síntomas y soluciones</h3>
+  <table>
+    <thead><tr><th style="width:32%">Síntoma</th><th style="width:32%">Causa probable</th><th>Solución</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>431</b> Request Header Fields Too Large / <b>414</b> URI Too Long</td>
+        <td>Token con el árbol de permisos incrustado (legado) o URL de redirección demasiado larga.</td>
+        <td>Usar el token ligero (<code>buildIdentityPayload</code>) y mover la autorización a <code>GET /users/profile</code>.</td>
+      </tr>
+      <tr>
+        <td><b>401</b> Invalid service credentials</td>
+        <td><code>SERVICE_API_KEY</code> distinta, ausente en el payload, o con espacios sobrantes.</td>
+        <td>Verificar que coincida con el <code class="inl">.env</code> de auth-ms y que viaje dentro del payload TCP (no en un header).</td>
+      </tr>
+      <tr>
+        <td><b>401</b> en las peticiones del frontend</td>
+        <td>Access token expirado y el interceptor no encuentra el refresh token.</td>
+        <td>Confirmar que <code>refreshToken</code> está en <code class="inl">sessionStorage</code>. Si el usuario cerró la pestaña, deberá iniciar sesión de nuevo (comportamiento esperado).</td>
+      </tr>
+      <tr>
+        <td>El usuario se autentica pero <b>nunca llega</b> a mi app</td>
+        <td>Su dominio no está en <code class="inl">SSO_ALLOWED_ORIGINS</code>.</td>
+        <td>Registrar el dominio y reiniciar auth-ms. Verificar que <code>redirectUri</code> use el mismo dominio exacto.</td>
+      </tr>
+      <tr>
+        <td>"No tienes permisos para acceder a esta módulo"</td>
+        <td><code>storageKey</code> no coincide con el <code>name</code> del módulo, o el usuario no tiene el módulo asignado.</td>
+        <td>Comparar ambos valores (distingue mayúsculas). Asignar el módulo al rol del usuario desde la consola de administración.</td>
+      </tr>
+      <tr>
+        <td>CORS bloquea la petición desde el navegador</td>
+        <td>El origen no está en <code class="inl">CORS_ORIGIN</code>, o se usa <code>x-service-key</code> (no está en <code>allowedHeaders</code>).</td>
+        <td>Agregar el origen a <code class="inl">CORS_ORIGIN</code>. Para <code>x-service-key</code> desde el navegador, añadirlo a <code>allowedHeaders</code> en <code>main.ts</code>.</td>
+      </tr>
+      <tr>
+        <td><b>ECONNREFUSED</b> al puerto 3011</td>
+        <td>auth-ms no escucha TCP, o host/puerto incorrectos.</td>
+        <td>Verificar <code>MICROSERVICE_HOST</code>/<code>MICROSERVICE_PORT</code> en auth-ms y el firewall. Probar con el script de la sección 5.6.</td>
+      </tr>
+      <tr>
+        <td>Login falla con <code>TRIAL_EXPIRED</code></td>
+        <td>El período de prueba del usuario venció (<code>limits.trialDays</code> o <code>TEST_USER_DAYS</code>).</td>
+        <td>Ampliar la política del tenant o desactivar la marca de prueba del usuario. <code>0</code> = sin expiración.</td>
+      </tr>
+      <tr>
+        <td>Login falla con <code>COMPANY_BLOCKED</code></td>
+        <td>La empresa está bloqueada (temporal o indefinidamente).</td>
+        <td>Levantar el bloqueo desde la consola: <code>PATCH /companies/:id/unblock</code>.</td>
+      </tr>
+      <tr>
+        <td><b>429</b> Too Many Requests</td>
+        <td>Throttling global: 10 req/min por defecto; el login es más estricto (5/min).</td>
+        <td>Aplicar <i>backoff</i>. Mostrar un mensaje al usuario en vez de reintentar en bucle.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>9.3 Verificar la configuración de auth-ms</h3>
+  <p>Un arranque exitoso debe imprimir en el log las URLs de ambos servidores:</p>
+  <pre>Servidor REST: http://[::]:3010
+Swagger docs: http://[::]:3010/api-docs</pre>
+  <p>Y la documentación interactiva completa está en <code class="inl">/api-docs</code>.</p>
+</div>
+
+<!-- ============================= S10 ============================= -->
+<div class="section" id="s10">
+  <h2 class="sec"><span class="sec-num">10</span> Referencias y documentación viva</h2>
+  <p class="sec-sub">Dónde consultar más detalle o regenerar la referencia</p>
+
+  <h3>Documentos del repositorio</h3>
+  <table>
+    <thead><tr><th style="width:38%">Archivo</th><th>Contenido</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">CONSUMIR_TENANT_CONFIG.md</td><td>Contrato completo de políticas por tenant y patrón de consumo por aplicación.</td></tr>
+      <tr><td class="mono">ESTRATEGIA_AUTH.md</td><td>El problema del token sobredimensionado (431/414) y la solución adoptada.</td></tr>
+      <tr><td class="mono">ESTRATEGIA_SEGURIDAD_TCP.md</td><td>Estrategia de seguridad del canal TCP: TLS, mTLS, segmentación de red.</td></tr>
+      <tr><td class="mono">ROADMAP_AUTH_INDUSTRIA.md</td><td>Brechas frente a estándares: MFA, OIDC/OAuth2, JWKS, SCIM, auditoría.</td></tr>
+      <tr><td class="mono">PLAN_CONFIG_TENANTS_SUPERADMIN.md</td><td>Diseño de la configuración por empresa administrada desde el SuperAdmin.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Documentación generada por el propio servicio</h3>
+  <div class="box info">
+    <span class="bt">El servicio publica su propia referencia de comandos TCP</span>
+    Además de Swagger en <code class="inl">/api-docs</code>, cada dominio expone un endpoint
+    <b>de solo lectura</b> que documenta los patrones TCP soportados. No envía datos reales:
+    la comunicación real ocurre por el socket TCP.
+    <pre style="margin-top:3mm">POST /api/users/tcp-docs/message-patterns
+POST /api/roles/tcp-docs/message-patterns
+POST /api/permissions/tcp-docs/message-patterns
+POST /api/modules/tcp-docs/message-patterns
+POST /api/companies/tcp-docs/message-patterns</pre>
+    <p class="src" style="margin:0">Origen: <code>auth-ms/src/users/users.controller.ts:793-806</code></p>
+  </div>
+
+  <h3>Código de referencia en el ecosistema</h3>
+  <table>
+    <thead><tr><th style="width:30%">Aplicación</th><th style="width:26%">Ruta</th><th>Qué aporta</th></tr></thead>
+    <tbody>
+      <tr><td>crm-educative</td><td class="mono">auth-guard.ts<br>process-auth-data.ts<br>auth.interceptor.ts</td><td>Flujo SSO completo desde el navegador</td></tr>
+      <tr><td>educative-backend</td><td class="mono">core/tcp/tcp.module.ts<br>core/services/auth.service.ts</td><td>Cliente TCP simple y llamadas con serviceKey</td></tr>
+      <tr><td>api-whatsapp</td><td class="mono">core/tcp/tcp.module.ts<br>core/strategies/jwt.strategy.ts</td><td>Cliente TCP con TLS y validación de JWT en cada request</td></tr>
+      <tr><td>auth-ms</td><td class="mono">src/main.ts<br>src/core/guards/*</td><td>Arranque híbrido, guards de servicio y TCP</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box ok" style="margin-top:8mm">
+    <span class="bt">Resumen en una línea</span>
+    Registra tu dominio en <code class="inl">SSO_ALLOWED_ORIGINS</code>, comparte la
+    <code class="inl">SERVICE_API_KEY</code>, apunta <code class="inl">storageKey</code> al módulo
+    correcto, y usa la redirección SSO para usuarios y el canal TCP con
+    <code class="inl">serviceKey</code> para tu backend.
+  </div>
+</div>
+
+</body>
+</html>

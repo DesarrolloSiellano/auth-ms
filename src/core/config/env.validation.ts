@@ -7,9 +7,11 @@ export const envValidationSchema = Joi.object({
   PORT: Joi.number().default(3010),
   JWT_SECRET: Joi.string().required(),
   JWT_REFRESH_SECRET: Joi.string().required(),
-  JWT_EXPIRATION: Joi.string().default('30d'),
+  JWT_EXPIRATION: Joi.string().default('1h'),
   JWT_ACCESS_EXPIRATION: Joi.string().default('1h'),
   JWT_REFRESH_EXPIRATION: Joi.string().default('7d'),
+  JWT_ISSUER: Joi.string().default('bponet-auth'),
+  JWT_AUDIENCE: Joi.string().default('bponet-apps'),
   MICROSERVICE_HOST: Joi.string().default('127.0.0.1'),
   MICROSERVICE_PORT: Joi.number().default(3011),
 
@@ -56,4 +58,13 @@ export const envValidationSchema = Joi.object({
 
   // Retención de auditoría (días) para el índice TTL de audit_logs
   AUDIT_RETENTION_DAYS: Joi.number().default(180),
+
+  // Días por defecto del período de prueba de usuarios (isTrial). 0 = sin expiración.
+  TEST_USER_DAYS: Joi.number().min(0).default(7),
+
+  // Caché de validez de sesión (ms) para revocación. 0 = sin caché (inmediato entre instancias).
+  SESSION_CACHE_TTL_MS: Joi.number().min(0).default(30000),
+
+  // Rate limiting del canal TCP (@MessagePattern). 'false' lo desactiva.
+  RPC_THROTTLE_ENABLED: Joi.string().default('true'),
 });
