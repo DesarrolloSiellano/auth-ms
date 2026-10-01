@@ -1,12 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { ModulesController } from './modules.controller';
 import { ModulesService } from './modules.service';
 
 describe('ModulesController', () => {
   let controller: ModulesController;
   const superAdminReq = { user: { isSuperAdmin: true } };
+  const adminReq = { user: { isAdmin: true, isSuperAdmin: false } };
   const serviceMock = {
     create: jest.fn(),
     findAll: jest.fn(),
@@ -45,23 +46,25 @@ describe('ModulesController', () => {
 
   it('findAll exige admin y delega', () => {
     serviceMock.findAll.mockReturnValue('list');
-    expect(controller.findAll({ user: { isAdmin: true } })).toBe('list');
+    expect(controller.findAll(adminReq)).toBe('list');
   });
 
   it('findAll rechaza no-admin', () => {
     expect(() => controller.findAll({ user: { isAdmin: false } })).toThrow(
-      UnauthorizedException,
+      ForbiddenException,
     );
   });
 
   it('findByPage delega con defaults', () => {
     serviceMock.findByPage.mockReturnValue('page');
-    expect(controller.findByPage(undefined, undefined, undefined)).toBe('page');
+    expect(
+      controller.findByPage(undefined, undefined, undefined, adminReq),
+    ).toBe('page');
   });
 
   it('findOne delega', () => {
     serviceMock.findOne.mockReturnValue('one');
-    expect(controller.findOne('m1')).toBe('one');
+    expect(controller.findOne('m1', adminReq)).toBe('one');
   });
 
   it('update exige SuperAdmin y delega', () => {
@@ -74,11 +77,6 @@ describe('ModulesController', () => {
   it('remove exige SuperAdmin y delega', () => {
     serviceMock.remove.mockReturnValue('del');
     expect(controller.remove('m1', superAdminReq)).toBe('del');
-  });
-
-  it('tcpPatternsDoc devuelve documentación', () => {
-    const result = controller.tcpPatternsDoc();
-    expect(result.patterns.length).toBeGreaterThan(0);
   });
 
   it('msCreate delega', () => {

@@ -1,9 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
+import { UserLimitsService } from './user-limits.service';
+import { ConfigService } from '@nestjs/config';
 import { MailService } from 'src/mail/mail.service';
 import { getModelToken } from '@nestjs/mongoose';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
+import { FeaturePolicyService } from 'src/core/services/feature-policy.service';
 
 jest.mock('./helpers/user-resolution.helper', () => ({
   resolveUserRoles: jest.fn().mockResolvedValue([]),
@@ -20,6 +23,7 @@ import {
 describe('UsersService', () => {
   let service: UsersService;
   let tenantConfigServiceMock: any;
+  let featurePolicyMock: any;
 
   const mockUserModel: any = jest.fn().mockImplementation((data: any) => ({
     ...data,
@@ -37,6 +41,7 @@ describe('UsersService', () => {
   mockUserModel.countDocuments = jest.fn();
 
   const mailServiceMock = { sendEmail: jest.fn().mockResolvedValue(undefined) };
+  const configServiceMock = { get: jest.fn().mockReturnValue('7') };
 
   function leanExec(value: any) {
     const execResult = { exec: jest.fn().mockResolvedValue(value) };
@@ -59,10 +64,19 @@ describe('UsersService', () => {
       isEmbedEnabled: jest.fn().mockReturnValue(false),
       resolveConfig: jest.fn().mockResolvedValue({ data: {} }),
       getPolicyValue: jest.fn().mockResolvedValue(0),
+      getConfiguredValue: jest
+        .fn()
+        .mockResolvedValue({ isSet: false, value: undefined }),
+      ensureRoleLimitPolicy: jest.fn().mockResolvedValue(false),
+    };
+    featurePolicyMock = {
+      isEnabled: jest.fn().mockResolvedValue(true),
+      assertEnabled: jest.fn().mockResolvedValue(undefined),
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
+        UserLimitsService,
         { provide: getModelToken('User'), useValue: mockUserModel },
         { provide: getModelToken('Rol'), useValue: {} },
         { provide: getModelToken('Permission'), useValue: {} },
@@ -72,6 +86,8 @@ describe('UsersService', () => {
           provide: TenantConfigService,
           useValue: tenantConfigServiceMock,
         },
+        { provide: FeaturePolicyService, useValue: featurePolicyMock },
+        { provide: ConfigService, useValue: configServiceMock },
       ],
     }).compile();
 
@@ -101,6 +117,27 @@ describe('UsersService', () => {
       expect(result.data).not.toHaveProperty('password');
       expect(result.meta.id).toBe('new-id');
       expect(mailServiceMock.sendEmail).toHaveBeenCalled();
+    });
+
+    it('A2b: un admin no puede asignar permissions/modules al crear', async () => {
+      await service.create(
+        {
+          name: 'Juan',
+          lastName: 'Pérez',
+          email: 'a2b@mail.com',
+          isActived: true,
+          isAdmin: false,
+          isSuperAdmin: false,
+          permissions: [{ name: 'p' }],
+          modules: [{ name: 'm' }],
+        } as any,
+        { isAdmin: true, isSuperAdmin: false },
+      );
+
+      const created =
+        mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
+      expect(created.permissions).toBeUndefined();
+      expect(created.modules).toBeUndefined();
     });
 
     it('normaliza email y username a minúsculas', async () => {
@@ -156,6 +193,65 @@ describe('UsersService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
+    it('marca usuario de prueba y calcula trialEndsAt con TEST_USER_DAYS', async () => {
+      const result = await service.create({
+        name: 'Trial',
+        lastName: 'User',
+        email: 'trial@mail.com',
+        company: 'EmpresaX',
+        isTrial: true,
+        isActived: true,
+        isAdmin: false,
+        isSuperAdmin: false,
+        isNewUser: true,
+      } as any);
+
+      expect(result.message).toContain('created');
+      const created =
+        mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
+      expect(created.isTrial).toBe(true);
+      expect(created.trialStartedAt).toBeInstanceOf(Date);
+      expect(created.trialEndsAt).toBeInstanceOf(Date);
+    });
+
+    it('trial con TEST_USER_DAYS=0 queda sin expiración', async () => {
+      configServiceMock.get.mockReturnValueOnce('0');
+
+      await service.create({
+        name: 'Trial',
+        lastName: 'User',
+        email: 'trial0@mail.com',
+        company: 'EmpresaX',
+        isTrial: true,
+        isActived: true,
+        isAdmin: false,
+        isSuperAdmin: false,
+        isNewUser: true,
+      } as any);
+
+      const created =
+        mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
+      expect(created.isTrial).toBe(true);
+      expect(created.trialEndsAt).toBeNull();
+    });
+
+    it('marca mustChangePassword e isNewUser al crear (temporal/invitación)', async () => {
+      await service.create({
+        name: 'Nuevo',
+        lastName: 'User',
+        email: 'nuevo@mail.com',
+        company: 'EmpresaX',
+        isActived: true,
+        isAdmin: false,
+        isSuperAdmin: false,
+      } as any);
+
+      const created =
+        mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
+      expect(created.mustChangePassword).toBe(true);
+      expect(created.isNewUser).toBe(true);
+    });
+
     it('permite crear si el límite es 0 (ilimitado)', async () => {
       tenantConfigServiceMock.getPolicyValue.mockResolvedValue(0);
       mockUserModel.findOne.mockReturnValue(leanExec(null));
@@ -206,7 +302,7 @@ describe('UsersService', () => {
   describe('createExternal', () => {
     it('crea un usuario externo resolviendo roles/permisos/módulos', async () => {
       const payload = {
-        _id: 'ext-1',
+        _id: '507f1f77bcf86cd799439011',
         name: 'Juan',
         lastName: 'Pérez',
         email: 'j@mail.com',
@@ -222,6 +318,26 @@ describe('UsersService', () => {
       expect(result.statusCode).toBe(201);
       expect(result.data).not.toHaveProperty('password');
       expect(mailServiceMock.sendEmail).toHaveBeenCalled();
+
+      const created =
+        mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
+      expect(created.isNewUser).toBe(true);
+      expect(created.mustChangePassword).toBe(true);
+    });
+
+    it('sincroniza mustChangePassword desde isNewUser (apps externas)', async () => {
+      await service.createExternal({
+        name: 'Ext',
+        lastName: 'User',
+        email: 'ext@mail.com',
+        company: 'EmpX',
+        isNewUser: false,
+      });
+
+      const created =
+        mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
+      expect(created.isNewUser).toBe(false);
+      expect(created.mustChangePassword).toBe(false);
     });
   });
 
@@ -424,6 +540,31 @@ describe('UsersService', () => {
         NotFoundException,
       );
     });
+
+    it('desmarca la prueba al actualizar isTrial=false', async () => {
+      mockUserModel.findById.mockReturnValueOnce({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest
+              .fn()
+              .mockResolvedValue({ company: 'EmpresaX', tenantId: 't', isTrial: true }),
+          }),
+        }),
+      });
+      mockUserModel.findByIdAndUpdate.mockReturnValue(
+        leanExec({ _id: 'a', isTrial: false }),
+      );
+
+      await service.update('a', { isTrial: false } as any);
+
+      const calls = mockUserModel.findByIdAndUpdate.mock.calls;
+      const operation = calls[calls.length - 1][1];
+      expect(operation.$set).toMatchObject({
+        isTrial: false,
+        trialStartedAt: null,
+        trialEndsAt: null,
+      });
+    });
   });
 
   describe('remove', () => {
@@ -501,6 +642,46 @@ describe('UsersService', () => {
 
       await expect(service.getUserModules({ _id: 'a' })).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('features.invitations', () => {
+    it('degrada a bienvenida (welcome) cuando la feature está deshabilitada', async () => {
+      featurePolicyMock.isEnabled.mockImplementation(
+        (_t: any, _c: any, key: string) =>
+          Promise.resolve(key !== 'features.invitations'),
+      );
+
+      await service.create({
+        name: 'Juan',
+        lastName: 'Pérez',
+        email: 'j@mail.com',
+        company: 'EmpresaX',
+        invite: true,
+      } as any);
+
+      expect(mailServiceMock.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ template: 'welcome' }),
+      );
+      expect(mailServiceMock.sendEmail).not.toHaveBeenCalledWith(
+        expect.objectContaining({ template: 'invite' }),
+      );
+    });
+
+    it('envía invitación cuando la feature está habilitada', async () => {
+      featurePolicyMock.isEnabled.mockResolvedValue(true);
+
+      await service.create({
+        name: 'Juan',
+        lastName: 'Pérez',
+        email: 'j@mail.com',
+        company: 'EmpresaX',
+        invite: true,
+      } as any);
+
+      expect(mailServiceMock.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ template: 'invite' }),
       );
     });
   });

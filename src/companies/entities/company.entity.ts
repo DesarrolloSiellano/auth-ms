@@ -14,6 +14,9 @@ export interface Company extends Document {
   logo?: string;
   id: string;
   isActive: boolean;
+  isBlocked?: boolean;
+  blockReason?: string;
+  blockedUntil?: Date | null;
   dateCreated?: string;
   hourCreated?: string;
   dateModified?: string;
@@ -36,6 +39,9 @@ export const CompanySchema = new Schema({
   logo: { type: String },
   id: { type: String, required: true, unique: true },
   isActive: { type: Boolean, default: true },
+  isBlocked: { type: Boolean, default: false },
+  blockReason: { type: String, default: null },
+  blockedUntil: { type: Date, default: null },
   dateCreated: { type: String, default: moment().format('YYYY-MM-DD') },
   hourCreated: { type: String, default: moment().format('HH:mm:ss') },
   dateModified: { type: String, default: moment().format('YYYY-MM-DD') },

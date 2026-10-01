@@ -3,7 +3,10 @@ import { UnauthorizedException } from '@nestjs/common';
 
 describe('JwtStrategy', () => {
   let strategy: JwtStrategy;
-  const configServiceMock = { getOrThrow: jest.fn().mockReturnValue('secret') };
+  const configServiceMock = {
+    getOrThrow: jest.fn().mockReturnValue('secret'),
+    get: jest.fn((_key: string, def?: any) => def),
+  };
   const mockUserModel = { findById: jest.fn() };
   const sessionsServiceMock = { isSessionActive: jest.fn().mockResolvedValue(true) };
 
@@ -23,11 +26,18 @@ describe('JwtStrategy', () => {
       lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(user) }),
     });
 
-    const result = await strategy.validate({ _id: 'abc' } as any);
+    const result = await strategy.validate({ _id: 'abc', sid: 's1' } as any);
 
     expect(mockUserModel.findById).toHaveBeenCalledWith('abc');
     expect(result).toMatchObject({ name: 'Juan', isActived: true });
     expect(result).not.toHaveProperty('password');
+  });
+
+  it('fail-closed: lanza 401 si el token no tiene sid', async () => {
+    await expect(strategy.validate({ _id: 'abc' } as any)).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(sessionsServiceMock.isSessionActive).not.toHaveBeenCalled();
   });
 
   it('valida la sesión cuando el token trae sid', async () => {
@@ -55,7 +65,7 @@ describe('JwtStrategy', () => {
       lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
     });
 
-    await expect(strategy.validate({ _id: 'abc' } as any)).rejects.toThrow(
+    await expect(strategy.validate({ _id: 'abc', sid: 's1' } as any)).rejects.toThrow(
       UnauthorizedException,
     );
   });
@@ -66,7 +76,7 @@ describe('JwtStrategy', () => {
       lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(user) }),
     });
 
-    await expect(strategy.validate({ _id: 'abc' } as any)).rejects.toThrow(
+    await expect(strategy.validate({ _id: 'abc', sid: 's1' } as any)).rejects.toThrow(
       UnauthorizedException,
     );
   });

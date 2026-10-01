@@ -472,21 +472,50 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
         { key: 'detalle', label: 'Detalle' },
       ];
 
-      const rows = (items || []).map((a: any) => {
-        const created = a.createdAt ? new Date(a.createdAt) : null;
-        return {
-          fecha: created ? created.toISOString().slice(0, 10) : '',
-          hora: created ? created.toISOString().slice(11, 19) : '',
-          accion: a.action || '',
-          categoria: a.category || '',
-          estado: a.status === 'failed' ? 'Fallido' : 'Exitoso',
-          usuario: a.email || a.userId || '',
-          empresa: a.company || '',
-          ip: a.ip || '',
-          dispositivo: [a.browser, a.os].filter(Boolean).join(' · '),
-          detalle: a.detail ? JSON.stringify(a.detail) : '',
-        };
-      });
+      const localeCache = new Map<string, any>();
+      const resolveLocale = async (tenantId?: string, company?: string) => {
+        const cacheKey = `${tenantId || ''}|${company || ''}`;
+        const cached = localeCache.get(cacheKey);
+        if (cached) return cached;
+        const resolved = deps.localeService
+          ? {
+              timezone: await deps.localeService.getTimezone(tenantId, company),
+              locale: await deps.localeService.getLocale(tenantId, company),
+            }
+          : { timezone: 'America/Bogota', locale: 'es-CO' };
+        localeCache.set(cacheKey, resolved);
+        return resolved;
+      };
+
+      const rows = await Promise.all(
+        (items || []).map(async (a: any) => {
+          const created = a.createdAt ? new Date(a.createdAt) : null;
+          const loc = await resolveLocale(
+            a.tenantId || ctx.tenantId,
+            a.company || ctx.company,
+          );
+          return {
+            fecha: deps.localeService
+              ? deps.localeService.formatDate(created, loc.timezone)
+              : created
+                ? created.toISOString().slice(0, 10)
+                : '',
+            hora: deps.localeService
+              ? deps.localeService.formatTime(created, loc.timezone)
+              : created
+                ? created.toISOString().slice(11, 19)
+                : '',
+            accion: a.action || '',
+            categoria: a.category || '',
+            estado: a.status === 'failed' ? 'Fallido' : 'Exitoso',
+            usuario: a.email || a.userId || '',
+            empresa: a.company || '',
+            ip: a.ip || '',
+            dispositivo: [a.browser, a.os].filter(Boolean).join(' · '),
+            detalle: a.detail ? JSON.stringify(a.detail) : '',
+          };
+        }),
+      );
 
       return {
         columns,

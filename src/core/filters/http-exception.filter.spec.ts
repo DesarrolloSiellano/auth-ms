@@ -32,27 +32,28 @@ describe('HttpExceptionFilter', () => {
     );
   });
 
-  it('responde 500 genérico para errores no HttpException', () => {
+  it('responde 500 genérico (sin filtrar detalles internos) y requestId', () => {
     filter.catch(new Error('boom'), httpHost());
 
     expect(status).toHaveBeenCalledWith(500);
     expect(json).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'boom' }),
+      expect.objectContaining({
+        message: 'Error interno al procesar la solicitud',
+        requestId: expect.any(String),
+      }),
     );
   });
 
-  it('traduce errores de duplicado de Mongo (11000)', () => {
+  it('traduce errores de duplicado de Mongo (11000) sin exponer el índice', () => {
     const err: any = new Error('dup');
     err.code = 11000;
     err.keyValue = { email: 'x@y.com' };
 
     filter.catch(err, httpHost());
 
-    expect(status).toHaveBeenCalledWith(400);
+    expect(status).toHaveBeenCalledWith(409);
     expect(json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: 'Duplicate key error: email already exists',
-      }),
+      expect.objectContaining({ message: 'El correo ya está registrado' }),
     );
   });
 
@@ -63,6 +64,31 @@ describe('HttpExceptionFilter', () => {
     );
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({ message: ['campo inválido'] }),
+    );
+  });
+
+  it('propaga code y errors estructurados (login)', () => {
+    filter.catch(
+      new HttpException(
+        {
+          message: 'Tu empresa está bloqueada.',
+          code: 'COMPANY_BLOCKED',
+          errors: [
+            { code: 'COMPANY_BLOCKED', message: 'Tu empresa está bloqueada.' },
+          ],
+        },
+        403,
+      ),
+      httpHost(),
+    );
+
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Tu empresa está bloqueada.',
+        code: 'COMPANY_BLOCKED',
+        errors: expect.any(Array),
+        statusCode: 403,
+      }),
     );
   });
 

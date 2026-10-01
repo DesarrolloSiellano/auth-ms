@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ThrottlerHybridGuard } from 'src/core/guards/throttler-hybrid.guard';
+import { ParamFormat } from 'src/core/decorators/param-format.decorator';
 import { AuditService } from 'src/audit/audit.service';
 import { SessionsService } from './sessions.service';
 
@@ -90,6 +91,7 @@ export class SessionsController {
   }
 
   @Get('findByUser/:userId')
+  @ParamFormat({ param: 'userId', kind: 'objectId' })
   @ApiOperation({ summary: 'Lista las sesiones activas de un usuario' })
   findByUser(@Param('userId') userId: string, @Req() req: any) {
     const company = this.resolveScope(req);
@@ -116,6 +118,7 @@ export class SessionsController {
   }
 
   @Delete('user/:userId')
+  @ParamFormat({ param: 'userId', kind: 'objectId' })
   @ApiOperation({ summary: 'Revoca todas las sesiones de un usuario' })
   async revokeByUser(@Param('userId') userId: string, @Req() req: any) {
     const company = this.resolveScope(req);
@@ -129,6 +132,7 @@ export class SessionsController {
   }
 
   @Delete('mine/:id')
+  @ParamFormat({ param: 'id', kind: 'objectId' })
   @ApiOperation({ summary: 'Revoca una sesión propia por id' })
   async revokeMine(@Param('id') id: string, @Req() req: any) {
     const userId = String(req.user._id);
@@ -158,6 +162,7 @@ export class SessionsController {
   }
 
   @Delete(':id')
+  @ParamFormat({ param: 'id', kind: 'objectId' })
   @ApiOperation({ summary: 'Revoca una sesión por id' })
   async revokeById(@Param('id') id: string, @Req() req: any) {
     const company = this.resolveScope(req);

@@ -32,7 +32,31 @@ describe('buildIdentityPayload', () => {
       company: 'EmpresaX',
       tenantId: '000000',
       isSuperAdmin: false,
+      isTrial: false,
+      trialStartedAt: null,
+      trialEndsAt: null,
+      emailVerified: false,
     });
+  });
+
+  it('incluye la información de prueba cuando el usuario es trial', () => {
+    const start = new Date('2026-01-01T00:00:00Z');
+    const end = new Date('2026-01-08T00:00:00Z');
+    const payload = buildIdentityPayload({
+      _id: 'abc123',
+      name: 'Juan',
+      email: 'juan@mail.com',
+      isActived: true,
+      company: 'EmpresaX',
+      tenantId: '000000',
+      isTrial: true,
+      trialStartedAt: start,
+      trialEndsAt: end,
+    });
+
+    expect(payload.isTrial).toBe(true);
+    expect(payload.trialStartedAt).toBe(start);
+    expect(payload.trialEndsAt).toBe(end);
   });
 
   it('no debe incluir modules, roles, permissions ni datos sensibles', () => {

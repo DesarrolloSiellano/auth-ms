@@ -48,6 +48,14 @@ Garantizar que un usuario administrador solo vea usuarios y sesiones de su empre
 - **TCP (breaking):** handlers de users requieren `context` en el payload (fail-closed). Los consumidores (crm-campaign-backend, educative-backend, tickets-bpo-backend, contratos-backend-bpo, api-whatsapp) deben actualizarse. `context` se deriva del JWT que ya validan (contiene company/tenantId/isSuperAdmin).
 - **Despliegue coordinado:** auth-ms es el límite de seguridad; si se despliega con fail-closed sin actualizar consumidores TCP, su `findUserById` devolverá 403 (caería la autenticación de esas apps). Actualizar consumidores en el mismo release.
 
+## Revocación de sesiones — alcance por rol (implementado)
+
+- La sesión guarda `isSuperAdmin` (denormalizado) para no requerir joins.
+- Un **admin no-super** solo lista/revoca sesiones de su empresa y **no** puede revocar sesiones de un **SuperAdmin** (`403`).
+- El **SuperAdmin** no tiene filtro: revoca cualquier sesión.
+- La revocación es efectiva al validar el token en **HTTP** (`JwtStrategy`) y **TCP** (`validateUser`), y por el nuevo comando `validateSession`.
+- `SESSION_CACHE_TTL_MS` (0 = sin caché) para revocación inmediata en multi-instancia.
+
 ## Verificación
 - Specs: `tenant-scope.helper.spec`, `users.service.spec` (cross-tenant 403/404, escalamiento bloqueado, contexto TCP), `sessions.service.spec`, `tenant.plugin.spec`.
 - Ejecutar `npm test`, lint y build.

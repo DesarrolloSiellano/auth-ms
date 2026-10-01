@@ -4,6 +4,7 @@ import { ForbiddenException, BadRequestException } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 import { AuditService } from 'src/audit/audit.service';
+import { LocaleService } from 'src/core/services/locale.service';
 
 function queryChain(value: any) {
   const chain: any = {};
@@ -25,6 +26,13 @@ describe('ReportsService', () => {
     resolveConfig: jest.fn(),
   };
   const auditService: any = { findForReport: jest.fn() };
+  const localeService: any = {
+    getTimezone: jest.fn().mockResolvedValue('America/Bogota'),
+    getLocale: jest.fn().mockResolvedValue('es-CO'),
+    formatDate: jest.fn().mockReturnValue('2026-01-01'),
+    formatTime: jest.fn().mockReturnValue('10:00:00'),
+    formatDateTime: jest.fn().mockReturnValue('01/01/2026, 10:00:00'),
+  };
 
   const admin = { _id: 'u1', name: 'Ana', isAdmin: true, company: 'BPONET' };
   const regular = { _id: 'u2', name: 'Beto', isAdmin: false };
@@ -39,6 +47,7 @@ describe('ReportsService', () => {
         { provide: getModelToken('Company'), useValue: companyModel },
         { provide: TenantConfigService, useValue: tenantConfigService },
         { provide: AuditService, useValue: auditService },
+        { provide: LocaleService, useValue: localeService },
       ],
     }).compile();
     service = module.get(ReportsService);
@@ -107,6 +116,32 @@ describe('ReportsService', () => {
       { isSuperAdmin: false, company: 'BPONET' },
       { page: 1, limit: 100 },
     );
+  });
+
+  it('auditoría: formatea fecha/hora con LocaleService', async () => {
+    auditService.findForReport.mockResolvedValue({
+      data: [
+        {
+          createdAt: new Date('2026-01-01T05:30:00Z'),
+          action: 'login.success',
+          category: 'auth',
+          status: 'success',
+          company: 'BPONET',
+        },
+      ],
+      total: 1,
+    });
+
+    const result = await service.preview('audit-access', {}, admin);
+
+    expect(localeService.getTimezone).toHaveBeenCalledWith(
+      undefined,
+      'BPONET',
+    );
+    expect(localeService.formatDate).toHaveBeenCalled();
+    expect(localeService.formatTime).toHaveBeenCalled();
+    expect(result.data.rows[0].fecha).toBe('2026-01-01');
+    expect(result.data.rows[0].hora).toBe('10:00:00');
   });
 
   it('data devuelve el dataset (JSON) para PDF en el navegador', async () => {
