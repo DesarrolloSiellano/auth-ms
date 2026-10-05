@@ -371,8 +371,10 @@ export class AuthController {
   async msValidateUser(@Payload() payload: any) {
     const token = payload?.token ?? payload;
     const user = await this.jwtTCPStrategy.validate(token);
+    // El `ResponseInterceptor` conserva `data` en RPC; el usuario va en `data.user`.
     return {
-      user,
+      message: 'Token valid',
+      data: { user },
       meta: {
         totalData: 1,
         id: user?._id,
@@ -383,22 +385,18 @@ export class AuthController {
 
   /**
    * Valida únicamente si el token/sesión sigue vigente (para apps externas
-   * que solo necesitan un booleano). Requiere `serviceKey`. A diferencia de
-   * `validateUser`, no lanza: devuelve `{ active }`.
+   * que solo necesitan un booleano). Requiere `serviceKey`. No hace lookup de
+   * usuario: solo firma + `sid` + sesión activa. No lanza: devuelve `{ active }`.
    */
   @MessagePattern({ cmd: 'validateSession' })
   async msValidateSession(@Payload() payload: any) {
     const token = payload?.token ?? payload;
-    try {
-      const user = await this.jwtTCPStrategy.validate(token);
-      return { active: true, valid: true, userId: user?._id };
-    } catch (error: any) {
-      return {
-        active: false,
-        valid: false,
-        reason: error?.message || 'Sesión inválida',
-      };
-    }
+    const result = await this.jwtTCPStrategy.validateSessionOnly(token);
+    return {
+      message: 'Session checked',
+      data: result,
+      meta: { totalData: 1 },
+    };
   }
 
   @MessagePattern({ cmd: 'refresh' })

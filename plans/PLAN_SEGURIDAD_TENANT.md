@@ -8,9 +8,9 @@ Garantizar que un usuario administrador solo vea usuarios y sesiones de su empre
 ## Alcance
 - Users y Sessions: aplicación de la regla en HTTP y TCP.
 - Roles, permissions y modules: **globales, sin tenant** (fuera de alcance).
-- Canal TCP: se maneja (contrato `context` en payloads).
-- Confianza TCP: el `serviceKey` autentica al servicio; se confía en el `context` declarado en el payload.
-- `createExternalUser`: `isSuperAdmin: true` solo se respeta si el `context` del llamante lo declara; si no, se fuerza `false`. `company`/`tenantId` se conservan del payload.
+- Canal TCP: el tenant se toma del **payload** (`company`/`tenantId` o `user.company`/`user.tenantId`); **no** existe el campo `context`.
+- Confianza TCP: el `serviceKey` autentica al servicio; se confía en el tenant declarado en el payload.
+- `createExternalUser`: `isSuperAdmin: true` se respeta si viene en el payload; `company`/`tenantId` se conservan del payload.
 
 ## Cambios
 
@@ -27,11 +27,11 @@ Garantizar que un usuario administrador solo vea usuarios y sesiones de su empre
 - `create`/`update`: no-superadmin → forzar `company`/`tenantId` desde el context y bloquear `isSuperAdmin: true` y cambio de tenant.
 - `createExternal`: respetar `company`/`tenantId` del payload; `isSuperAdmin: true` solo si el `context` del llamante lo declara.
 
-### 3. `UsersController` — contrato TCP con `context`
-- Todos los handlers `ms*` extraen `context` del payload y lo pasan al servicio.
-- Fail-closed: handlers scoped exigen `context` con tenant (o `isSuperAdmin: true`); si falta → `ForbiddenException`.
-- HTTP `create`/`update`/`remove` ahora validan ownership del target (403/404).
-- Actualizar `tcp-docs/message-patterns` con el nuevo payload (`serviceKey`, `context`, resto).
+### 3. `UsersController` — contrato TCP
+- Los handlers `ms*` operan con el contexto derivado del **payload** (`company`/`tenantId`) por `RpcTenantContextInterceptor`; no se usa `context`.
+- El scoping por empresa se aplica en la capa de datos vía `tenantPlugin` (filtro `company`) y/o filtros explícitos.
+- HTTP `create`/`update`/`remove` validan ownership del target (403/404).
+- El catálogo TCP se documenta en `GET /api/tcp-docs`.
 
 ### 4. `SessionsService` — tenant-aware
 - `createSession`, `findActiveByRefreshHash`, `deactivateByRefreshHash`: parámetro opcional `context` que aplica `buildTenantScope` cuando es no-superadmin. Login/refresh internos sin context conservan comportamiento actual.
@@ -41,12 +41,12 @@ Garantizar que un usuario administrador solo vea usuarios y sesiones de su empre
 - `tenant.middleware.ts`: si el JWT trae `tenantId` pero no `company`, usar `tenantId` como fallback para establecer contexto.
 
 ### 6. Documentación
-- `ESTRATEGIA_SEGURIDAD_TCP.md`: contrato nuevo `{ serviceKey, context, ...payload }` para handlers de users y nota de compatibilidad.
+- `ESTRATEGIA_SEGURIDAD_TCP.md` y `ESTRATEGIA_VALIDACION_AUTH.md`: contrato real `{ serviceKey, company/tenantId, ...payload }` y estrategia de validación global.
 
 ## Impacto / breaking changes
-- **HTTP/REST (frontends):** sin cambios en flujos legítimos. Cambia solo el comportamiento que era agujero: `create`/`update` fuerzan `company`/`tenantId` del token y bloquean `isSuperAdmin` para no-superadmin; `findOne`/`update`/`remove` de usuarios de otra empresa → 403/404. JWT/identity payload sin cambios.
-- **TCP (breaking):** handlers de users requieren `context` en el payload (fail-closed). Los consumidores (crm-campaign-backend, educative-backend, tickets-bpo-backend, contratos-backend-bpo, api-whatsapp) deben actualizarse. `context` se deriva del JWT que ya validan (contiene company/tenantId/isSuperAdmin).
-- **Despliegue coordinado:** auth-ms es el límite de seguridad; si se despliega con fail-closed sin actualizar consumidores TCP, su `findUserById` devolverá 403 (caería la autenticación de esas apps). Actualizar consumidores en el mismo release.
+- **HTTP/REST (frontends):** sin cambios en flujos legítimos. `create`/`update` fuerzan `company`/`tenantId` del token y bloquean `isSuperAdmin` para no-superadmin; `findOne`/`update`/`remove` de usuarios de otra empresa → 403/404. El identity payload ahora incluye `isAdmin` y `emailVerified`.
+- **TCP:** el tenant se toma del payload (`company`/`tenantId`), **no** de `context`. `validateUser` devuelve el usuario en `data.user` y `validateSession` en `data.active`. Los consumidores (crm-campaign-backend, educative-backend, tickets-bpo-backend, contratos-backend-bpo, api-whatsapp) deben leer desde `data` y usar la estrategia global (validación local + `validateSession` cacheado).
+- **Despliegue coordinado:** auth-ms es el límite de seguridad; actualizar consumidores en el mismo release.
 
 ## Revocación de sesiones — alcance por rol (implementado)
 

@@ -1056,15 +1056,15 @@ curl <span class="s">"https://app.bponet.com.co/auth/api/users/profile"</span> \
 
   <h3>5.5 Catálogo completo de comandos TCP</h3>
   <p>Los 45 comandos disponibles, agrupados por dominio. <b>Todos requieren <code class="inl">serviceKey</code>.</b></p>
-  <p><b>Revocación de sesiones:</b> <code class="inl">validateUser</code> y <code class="inl">validateSession</code> validan la sesión contra auth-ms. Si la sesión fue revocada (o el token no tiene <code class="inl">sid</code>), <code class="inl">validateUser</code> lanza <code class="inl">401</code> y <code class="inl">validateSession</code> devuelve <code class="inl">{ active: false }</code>. Las apps externas deben tratar un <code class="inl">401</code> como cierre de sesión. No caches la validación de autenticación (o usa un TTL muy corto).</p>
+  <p><b>Revocación de sesiones y estrategia global:</b> valida el JWT <b>localmente</b> (firma/iss/aud/exp) y usa <code class="inl">validateSession</code> (ligero, sin lookup de usuario) para la revocación, con <b>caché corta (~15s)</b> por <code class="inl">sid</code>. <code class="inl">validateUser</code> solo en login/bootstrap. Si <code class="inl">data.active === false</code> (o el guard devuelve 401) cierra sesión; ante 429 aplica backoff. Las respuestas TCP van envueltas: el dato está en <code class="inl">data</code>. Ver <code class="inl">plans/ESTRATEGIA_VALIDACION_AUTH.md</code>.</p>
 
   <h4>Dominio auth — <code>auth-ms/src/auth/auth.controller.ts:343-371</code></h4>
   <table>
     <thead><tr><th style="width:22%">cmd</th><th style="width:40%">Payload</th><th>Retorna</th></tr></thead>
     <tbody>
       <tr><td class="mono">login</td><td class="mono">{ serviceKey, email, password, meta?, ip? }</td><td>Resultado del login (accessToken, refreshToken, mustChangePassword, tenantConfig)</td></tr>
-      <tr><td class="mono">validateUser</td><td class="mono">{ serviceKey, token }</td><td><code>{ user, meta: { totalData, id, valid } }</code>. <b>Rechaza (401) si la sesión fue revocada o el token no tiene <code class="inl">sid</code>.</b></td></tr>
-      <tr><td class="mono">validateSession</td><td class="mono">{ serviceKey, token }</td><td><code>{ active, valid, userId? }</code> (no lanza). Útil para chequeos booleanos.</td></tr>
+      <tr><td class="mono">validateUser</td><td class="mono">{ serviceKey, token }</td><td><code>{ message, status, data: { user }, meta }</code>. El usuario va en <b><code class="inl">data.user</code></b>. <b>Rechaza (401) si la sesión fue revocada o el token no tiene <code class="inl">sid</code>.</b></td></tr>
+      <tr><td class="mono">validateSession</td><td class="mono">{ serviceKey, token }</td><td><code>{ message, status, data: { active, valid, reason? }, meta }</code>. Booleano en <b><code class="inl">data.active</code></b>; no hace lookup de usuario.</td></tr>
       <tr><td class="mono">refresh</td><td class="mono">{ serviceKey, refreshToken }</td><td>Nuevo access token + payload de identidad</td></tr>
       <tr><td class="mono">changePassword</td><td class="mono">{ serviceKey, id?, currentPassword, newPassword }</td><td>Confirmación del cambio</td></tr>
     </tbody>

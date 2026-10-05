@@ -8,6 +8,7 @@ export interface IdentityPayload {
   company: string;
   tenantId: string;
   isSuperAdmin?: boolean;
+  isAdmin?: boolean;
   isTrial?: boolean;
   trialStartedAt?: Date | null;
   trialEndsAt?: Date | null;
@@ -31,6 +32,7 @@ export function buildIdentityPayload(user: any, sid?: string): IdentityPayload {
     company: user.company,
     tenantId: user.tenantId,
     isSuperAdmin: user.isSuperAdmin,
+    isAdmin: user.isAdmin === true,
     isTrial: user.isTrial === true,
     trialStartedAt: user.trialStartedAt ?? null,
     trialEndsAt: user.trialEndsAt ?? null,

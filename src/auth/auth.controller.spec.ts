@@ -15,7 +15,7 @@ describe('AuthController', () => {
     refreshAccessToken: jest.fn(),
     setPasswordWithToken: jest.fn(),
   };
-  const jwtTCPMock = { validate: jest.fn() };
+  const jwtTCPMock = { validate: jest.fn(), validateSessionOnly: jest.fn() };
   const configMock = {
     get: jest.fn((key: string) => {
       if (key === 'SSO_ALLOWED_ORIGINS') return 'app.bponet.com.co,localhost';
@@ -166,12 +166,13 @@ describe('AuthController', () => {
       expect(authServiceMock.login).toHaveBeenCalledWith(payload, '9.9.9.9');
     });
 
-    it('msValidateUser valida el token', async () => {
+    it('msValidateUser valida el token (usuario en data.user)', async () => {
       jwtTCPMock.validate.mockResolvedValue({ _id: 'u1' });
 
       await expect(controller.msValidateUser({ token: 'tok' })).resolves.toEqual(
         {
-          user: { _id: 'u1' },
+          message: 'Token valid',
+          data: { user: { _id: 'u1' } },
           meta: { totalData: 1, id: 'u1', valid: true },
         },
       );
@@ -179,24 +180,37 @@ describe('AuthController', () => {
     });
 
     it('msValidateSession devuelve active:true con token válido', async () => {
-      jwtTCPMock.validate.mockResolvedValue({ _id: 'u1' });
-
-      await expect(
-        controller.msValidateSession({ token: 'tok' }),
-      ).resolves.toEqual({ active: true, valid: true, userId: 'u1' });
-    });
-
-    it('msValidateSession devuelve active:false si la sesión es inválida/revocada', async () => {
-      jwtTCPMock.validate.mockRejectedValue(
-        new Error('Sesión revocada o expirada'),
-      );
+      jwtTCPMock.validateSessionOnly.mockResolvedValue({
+        active: true,
+        valid: true,
+      });
 
       await expect(
         controller.msValidateSession({ token: 'tok' }),
       ).resolves.toEqual({
+        message: 'Session checked',
+        data: { active: true, valid: true },
+        meta: { totalData: 1 },
+      });
+    });
+
+    it('msValidateSession devuelve active:false si la sesión es inválida/revocada', async () => {
+      jwtTCPMock.validateSessionOnly.mockResolvedValue({
         active: false,
         valid: false,
         reason: 'Sesión revocada o expirada',
+      });
+
+      await expect(
+        controller.msValidateSession({ token: 'tok' }),
+      ).resolves.toEqual({
+        message: 'Session checked',
+        data: {
+          active: false,
+          valid: false,
+          reason: 'Sesión revocada o expirada',
+        },
+        meta: { totalData: 1 },
       });
     });
 
