@@ -83,4 +83,16 @@ describe('RpcThrottlerGuard', () => {
     }
     g.onModuleDestroy();
   });
+
+  it('respeta el límite configurable de validate (RPC_THROTTLE_VALIDATE)', () => {
+    config.get.mockImplementation((key: string, def?: any) =>
+      key === 'RPC_THROTTLE_VALIDATE' ? '2' : def,
+    );
+    const g = new RpcThrottlerGuard(config as any);
+    const ctx = rpcContext('msValidateUser', { serviceKey: 'k' });
+    expect(g.canActivate(ctx)).toBe(true);
+    expect(g.canActivate(ctx)).toBe(true);
+    expect(() => g.canActivate(ctx)).toThrow(ThrottlerException);
+    g.onModuleDestroy();
+  });
 });

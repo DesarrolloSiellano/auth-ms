@@ -7,7 +7,7 @@
 
 ## 0. Resumen de cambios que impactan a las apps
 1. **JWT con `iss`/`aud`:** los tokens ahora traen `issuer` y `audience`; **firma HS256**. Si verifican el JWT localmente, deben aceptar los nuevos claims (no rompen la firma) y pueden validarlos.
-2. **Revocación de sesiones:** `validateUser` (TCP) ahora **rechaza tokens revocados o sin `sid`**. Nuevo `validateSession` (booleano).
+2. **Revocación de sesiones:** `validateUser` (TCP) ahora **rechaza tokens revocados o sin `sid`** y devuelve el usuario en **`data.user`**. Nuevo `validateSession` (ligero, devuelve **`data.active`**). Recomendado: validación local + `validateSession` cacheado (~15s).
 3. **Rotación de refresh:** `/auth/refresh` devuelve un **`refreshToken` nuevo**; hay que **guardar el nuevo** y descartar el anterior (reutilizar el viejo revoca la sesión).
 4. **Tenant en TCP:** el backend del microservicio deriva el tenant del `payload` (`company`/`tenantId` o `user.company/tenantId`). Enviar el tenant correcto en cada comando.
 5. **Rate limiting TCP:** posibles respuestas 429 por comando; implementar backoff/reintentos controlados.
@@ -27,31 +27,36 @@
 - `ClientProxy` TCP al host/puerto de `auth-ms` (`MICROSERVICE_PORT`, def. 3011). Si se habilita TLS/mTLS, configurar `tls` en el `ClientProxy`.
 - Todos los payloads deben incluir `serviceKey` (obligatorio).
 
-### 1.2 Validación de sesión en cada request
-Reemplazar/asegurar la validación por `validateUser`:
+### 1.2 Validación de sesión (estrategia global)
+Las respuestas TCP vienen **envueltas**: el dato está en `data`.
+- **Validación local** del JWT (firma `HS256`, `iss`, `aud`, `exp`) en cada request.
+- **Revocación** vía `validateSession` (ligero, sin lookup de usuario) con **caché ~15s** por `sid`:
 ```ts
-const { user } = await firstValueFrom(
-  client.send({ cmd: 'validateUser' }, { serviceKey, token }),
-);
-```
-- Si responde **error/401** (`Sesión revocada o expirada`, `Sesión no válida`, `Token inválido`): forzar **logout** en la app.
-- Para chequear solo vigencia (sin traer usuario):
-```ts
-const { active } = await firstValueFrom(
+const res = await firstValueFrom(
   client.send({ cmd: 'validateSession' }, { serviceKey, token }),
 );
+if (!res?.data?.active) throw new UnauthorizedException('Sesión revocada');
 ```
-- **No cachear** el resultado de autenticación (o TTL muy corto, ≤30s) para que la revocación sea inmediata.
+- **`validateUser`** solo en login/bootstrap (trae el usuario completo en `data.user`):
+```ts
+const res = await firstValueFrom(
+  client.send({ cmd: 'validateUser' }, { serviceKey, token }),
+);
+const user = res.data.user; // ¡no `res.user`!
+```
+- Si responde **error/401** (`Sesión revocada o expirada`, `Sesión no válida`, `Token inválido`): forzar **logout**.
+- Cachear la **revocación** ≤15s; **no** cachear identidad de forma prolongada. Fail-closed si auth-ms no responde con caché vencida.
+- Detalle: `plans/ESTRATEGIA_VALIDACION_AUTH.md`.
 
 ### 1.3 Refresh token (rotación)
-Al refrescar:
+Al refrescar (dato en `data`):
 ```ts
 const res = await firstValueFrom(
   client.send({ cmd: 'refresh' }, { serviceKey, refreshToken }),
 );
-// res.accessToken (nuevo access) y res.refreshToken (NUEVO refresh)
+// res.data.accessToken (nuevo access) y res.data.refreshToken (NUEVO refresh)
 ```
-- **Guardar `res.refreshToken`** y reemplazar el anterior. Si la app solo guarda el access, seguirá usando el refresh viejo → al reutilizarlo el servidor **revoca todas las sesiones**.
+- **Guardar `res.data.refreshToken`** y reemplazar el anterior. Si la app solo guarda el access, seguirá usando el refresh viejo → al reutilizarlo el servidor **revoca todas las sesiones**.
 - Manejar fallo de refresh → logout.
 
 ### 1.4 Tenant en los comandos de usuarios
@@ -113,9 +118,9 @@ saveTokens(res.accessToken, res.refreshToken); // reemplazar el refresh previo
 
 ## 3. Checklist por app
 - [ ] `SERVICE_API_KEY` configurada y TLS del `ClientProxy` (si aplica).
-- [ ] `validateUser` en cada request (o `validateSession`), sin cachear autenticación.
-- [ ] Refresh guarda el **nuevo** `refreshToken`.
-- [ ] Enviar `company`/`tenantId` en comandos de usuarios.
+- [ ] Validación local del JWT + `validateSession` cacheado (~15s); `validateUser` solo en login (leer `data.user`).
+- [ ] Refresh guarda el **nuevo** `refreshToken` (leer `data.refreshToken`).
+- [ ] Enviar `company`/`tenantId` en comandos de usuarios (no `context`).
 - [ ] Manejo de 401/429/400/409.
 - [ ] Frontend: guarda refresh rotado, ruta `/verify-email`, banner + reenviar, recovery por enlace.
 - [ ] Frontend: origen en `SSO_ALLOWED_ORIGINS`.

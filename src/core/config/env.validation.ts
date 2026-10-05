@@ -67,4 +67,12 @@ export const envValidationSchema = Joi.object({
 
   // Rate limiting del canal TCP (@MessagePattern). 'false' lo desactiva.
   RPC_THROTTLE_ENABLED: Joi.string().default('true'),
+  RPC_THROTTLE_LOGIN: Joi.number().min(0).default(5),
+  RPC_THROTTLE_REFRESH: Joi.number().min(0).default(10),
+  RPC_THROTTLE_CHANGE_PASSWORD: Joi.number().min(0).default(10),
+  RPC_THROTTLE_VALIDATE: Joi.number().min(0).default(6000),
+  RPC_THROTTLE_DEFAULT: Joi.number().min(0).default(100),
+
+  // Caché de usuario en la validación TCP (ms). 0 = sin caché.
+  JWT_USER_CACHE_TTL_MS: Joi.number().min(0).default(5000),
 });

@@ -8,7 +8,7 @@
 ## 1. Contrato TCP con `context` (docs) vs implementación real
 - **Regla documentada** (`plans/PLAN_SEGURIDAD_TENANT.md` §Alcance y §3): los handlers TCP de `users` exigen `context` en el payload (fail-closed); `createExternalUser` respeta `isSuperAdmin` solo si el `context` lo declara.
 - **Realidad del código:** `RpcTenantContextInterceptor` deriva el tenant de `payload.company/tenantId` o `payload.user.*`; **no existe `context`** ni fail-closed. `createExternal` usa `company` directo y `isSuperAdmin` del payload.
-- **Resolución:** actualizar `PLAN_SEGURIDAD_TENANT.md` para documentar el contrato real (`serviceKey` + `company/tenantId`), o implementar `context` formal si se desea fail-closed. **No** dejar el doc prometiendo un contrato inexistente.
+- **Resolución (aplicada):** `PLAN_SEGURIDAD_TENANT.md` documenta el contrato real (`serviceKey` + `company/tenantId`). Ver `plans/ESTRATEGIA_VALIDACION_AUTH.md`.
 
 ## 2. Helper `tenant-scope.helper.ts` inexistente
 - **Regla documentada:** `buildTenantScope`/`requireTenantScope`/`isInTenantScope` en `src/core/database/tenant-scope.helper.ts`.
@@ -60,9 +60,18 @@
 
 ## 12. Rate limiting: valores y ámbitos dispersos
 - **Inconsistencia:** docs/guía mencionan throttling HTTP (10/min) y `@Throttle` (login 5/min); ahora también existe límite **TCP** por comando (`RpcThrottlerGuard`).
-- **Resolución:** consolidar una tabla única de límites (HTTP y TCP) en la documentación.
+- **Resolución (aplicada):** límites TCP ahora **configurables por env** (`RPC_THROTTLE_*`, `validate*` 6000/min por defecto). Tabla consolidada en `ESTRATEGIA_VALIDACION_AUTH.md` §9.
 
 ## 13. Origen de los enlaces de correo (resuelto)
 - **Inconsistencia previa:** recuperación/verificación usaban `APP_URL` del entorno mientras invitación/bienvenida usaban el **origen de la petición** → enlaces podían apuntar a un front distinto.
 - **Resolución (aplicada):** todos los correos con enlace usan `resolveRequestOrigin(req)` (Origin/Referer) y, si no existe, `DEFAULT_FRONT_URL`. **Se dejó de usar `APP_URL` de entorno.**
+
+## 14. Envelope RPC: respuesta envuelta vs consumidores esperando el campo raíz (resuelto)
+- **Síntoma:** `POST /api/dashboard/stats` (api-whatsapp) devolvía 401 `"Token no valid"`.
+- **Causa raíz:** `ResponseInterceptor` envuelve **toda** respuesta TCP en `{ message, status, data, meta }`, pero `msValidateUser` devolvía `{ user, meta }`; al existir `meta`, el interceptor guardaba el resultado completo en `data` → el consumidor que hacía `const { user } = res` recibía `undefined` y caía al fallback `findUserById` (429 por rate limit) → 401.
+- **Resolución (aplicada):** `validateUser` devuelve explícitamente `{ message, data: { user }, meta }`; `validateSession` devuelve `{ message, data: { active, valid, reason? }, meta }`. Documentado en guía, `ESTRATEGIA_VALIDACION_AUTH.md` y `tcp-docs`.
+
+## 15. `validateSession` hacía lookup de usuario (resuelto)
+- **Inconsistencia:** el chequeo "ligero" de vigencia terminaba resolviendo el usuario (con caché) para descartarlo.
+- **Resolución (aplicada):** nuevo `JwtTCPStrategy.validateSessionOnly` verifica firma + `sid` + `isSessionActive` **sin** cargar el usuario. `validate` (completo) mantiene caché de usuario (`JWT_USER_CACHE_TTL_MS`).
 

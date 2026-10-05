@@ -36,10 +36,12 @@ const TCP_COMMANDS: TcpCommandDoc[] = [
     command: 'validateUser',
     domain: 'auth',
     description:
-      'Valida el JWT y devuelve el usuario. RECHAZA si la sesión fue revocada o el token no tiene `sid`.',
+      'Valida el JWT y devuelve el usuario en data.user. RECHAZA si la sesión fue revocada o el token no tiene `sid`.',
     payloadExample: { serviceKey: '<SERVICE_API_KEY>', token: '<access_token>' },
     responseExample: {
-      user: { _id: 'u1', email: 'juan@mail.com' },
+      message: 'Token valid',
+      status: 'Success',
+      data: { user: { _id: 'u1', email: 'juan@mail.com' } },
       meta: { totalData: 1, id: 'u1', valid: true },
     },
   },
@@ -47,16 +49,26 @@ const TCP_COMMANDS: TcpCommandDoc[] = [
     command: 'validateSession',
     domain: 'auth',
     description:
-      'Comprueba únicamente si el token/sesión sigue vigente. No lanza: devuelve { active }.',
+      'Comprueba únicamente si el token/sesión sigue vigente (sin lookup de usuario). No lanza: devuelve data.active.',
     payloadExample: { serviceKey: '<SERVICE_API_KEY>', token: '<access_token>' },
-    responseExample: { active: true, valid: true, userId: 'u1' },
+    responseExample: {
+      message: 'Session checked',
+      status: 'Success',
+      data: { active: true, valid: true },
+      meta: { totalData: 1 },
+    },
   },
   {
     command: 'refresh',
     domain: 'auth',
-    description: 'Refresca el access token a partir del refresh token.',
+    description:
+      'Refresca el token: devuelve nuevo accessToken y NUEVO refreshToken (rotación).',
     payloadExample: { serviceKey: '<SERVICE_API_KEY>', refreshToken: '...' },
-    responseExample: { accessToken: '...', payload: { _id: 'u1' } },
+    responseExample: {
+      accessToken: '...',
+      refreshToken: '...',
+      payload: { _id: 'u1' },
+    },
   },
   {
     command: 'changePassword',
