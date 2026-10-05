@@ -98,4 +98,35 @@ describe('JwtTCPStrategy', () => {
 
     await expect(strategy.validate('token')).rejects.toThrow(UnauthorizedException);
   });
+
+  describe('validateSessionOnly', () => {
+    it('activo con sesión válida y sin lookup de usuario', async () => {
+      (jwt.verify as jest.Mock).mockReturnValue({ _id: 'abc', sid: 's1' });
+
+      await expect(strategy.validateSessionOnly('token')).resolves.toEqual({
+        active: true,
+        valid: true,
+      });
+      expect(mockUserModel.findById).not.toHaveBeenCalled();
+    });
+
+    it('inactivo si la sesión está revocada', async () => {
+      (jwt.verify as jest.Mock).mockReturnValue({ _id: 'abc', sid: 's1' });
+      sessionsServiceMock.isSessionActive.mockResolvedValue(false);
+
+      const res = await strategy.validateSessionOnly('token');
+      expect(res.active).toBe(false);
+      expect(mockUserModel.findById).not.toHaveBeenCalled();
+    });
+
+    it('inactivo si no hay sid o el token es inválido', async () => {
+      (jwt.verify as jest.Mock).mockReturnValue({ _id: 'abc' });
+      expect((await strategy.validateSessionOnly('token')).active).toBe(false);
+
+      (jwt.verify as jest.Mock).mockImplementation(() => {
+        throw new Error('invalid');
+      });
+      expect((await strategy.validateSessionOnly('token')).active).toBe(false);
+    });
+  });
 });

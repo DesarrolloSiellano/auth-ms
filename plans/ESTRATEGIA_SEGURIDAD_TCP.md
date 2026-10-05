@@ -75,8 +75,16 @@
 ### Rate limiting del canal TCP
 
 - Guard global **`RpcThrottlerGuard`** (`APP_GUARD`, tras `ServiceAuthGuard`): limita cada `@MessagePattern` por comando y por emisor (`serviceKey`).
-- Límites: `login` 5/min · `refresh`/`changePassword` 10/min · `validateUser`/`validateSession` 600/min · resto 100/min.
-- Toggle: `RPC_THROTTLE_ENABLED` (`true` por defecto). Por instancia (Redis en multi-instancia). El HTTP sigue con `ThrottlerHybridGuard`.
+- Límites por defecto (configurables por env): `login` 5/min · `refresh`/`changePassword` 10/min · `validateUser`/`validateSession` **6000/min** · resto 100/min.
+- Env: `RPC_THROTTLE_ENABLED`, `RPC_THROTTLE_LOGIN`, `RPC_THROTTLE_REFRESH`, `RPC_THROTTLE_CHANGE_PASSWORD`, `RPC_THROTTLE_VALIDATE`, `RPC_THROTTLE_DEFAULT`. Por instancia (Redis en multi-instancia). El HTTP sigue con `ThrottlerHybridGuard`.
+
+### Contrato de respuesta RPC y validación global
+
+- **Toda respuesta TCP se envuelve:** `{ message, status, data, meta }` (sin `statusCode`). **El payload real está en `data`.**
+- Error RPC: `{ message, status: 'Error', data: null, requestId, meta: { timestamp } }` (+ `code`/`errors`).
+- `validateUser` → **`data.user`**; `validateSession` → **`data.active`** (ligero, sin lookup de usuario); `refresh` → **nuevo `refreshToken`**.
+- **Estrategia recomendada (global):** validación **local** del JWT (firma/`iss`/`aud`/`exp`) + revocación vía `validateSession` con **caché corta (~15s)** por `sid`; `validateUser` solo en login; **fail-closed** si auth-ms no responde; 401 → logout, 429 → backoff.
+- Detalle completo: `plans/ESTRATEGIA_VALIDACION_AUTH.md`.
 
 ### Validación de parámetros y auditoría
 

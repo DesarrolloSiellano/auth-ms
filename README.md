@@ -91,9 +91,13 @@ La revocación se aplica **en el momento en que se valida el token/sesión** (pu
 
 - **HTTP:** `JwtStrategy` valida `sid` (fail-closed: token sin `sid` → 401) y consulta `isSessionActive`.
 - **TCP:** `validateUser` valida además la sesión; una sesión revocada devuelve `UnauthorizedException`.
-- **`validateSession`** (TCP, `{ serviceKey, token }`): booleano `{ active }` sin lanzar, para apps que
-  solo necesitan saber si el token sigue vigente.
-- Todo payload TCP debe incluir `serviceKey`.
+- **`validateSession`** (TCP, `{ serviceKey, token }`): chequeo **ligero** (firma + `sid` + sesión activa, **sin** lookup de usuario).
+  Respuesta envuelta: `data = { active, valid, reason? }`.
+- Todo payload TCP debe incluir `serviceKey`. Las respuestas TCP van envueltas en `{ message, status, data, meta }`.
+
+**Estrategia global recomendada** (para todas las apps): validar el JWT **localmente** (firma/`iss`/`aud`/`exp`) +
+revocación vía `validateSession` con **caché ~15s** por `sid`; `validateUser` solo en login (usuario en `data.user`);
+**fail-closed** si auth-ms no responde con caché vencida. Detalle en `plans/ESTRATEGIA_VALIDACION_AUTH.md`.
 
 Alcance de revocación:
 
@@ -116,8 +120,8 @@ Caché y escalabilidad:
 Los comandos `@MessagePattern` (TCP) también están limitados por `RpcThrottlerGuard`
 (por comando y por emisor `serviceKey`):
 
-- `login`: 5/min · `refresh` y `changePassword`: 10/min · `validateUser`/`validateSession`: 600/min · resto: 100/min.
-- Toggle: `RPC_THROTTLE_ENABLED` (`true` por defecto; `false` desactiva).
+- `login`: 5/min · `refresh` y `changePassword`: 10/min · `validateUser`/`validateSession`: **6000/min** · resto: 100/min.
+- Todos configurables: `RPC_THROTTLE_ENABLED`, `RPC_THROTTLE_LOGIN`, `RPC_THROTTLE_REFRESH`, `RPC_THROTTLE_CHANGE_PASSWORD`, `RPC_THROTTLE_VALIDATE`, `RPC_THROTTLE_DEFAULT` (`0` = sin límite).
 - El límite es **por instancia** (con varias instancias se recomienda Redis). El HTTP sigue usando `ThrottlerHybridGuard` y `@Throttle`.
 
 ### Seguridad (endurecimientos)

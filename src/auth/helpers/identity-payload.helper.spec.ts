@@ -32,6 +32,7 @@ describe('buildIdentityPayload', () => {
       company: 'EmpresaX',
       tenantId: '000000',
       isSuperAdmin: false,
+      isAdmin: true,
       isTrial: false,
       trialStartedAt: null,
       trialEndsAt: null,
@@ -82,7 +83,6 @@ describe('buildIdentityPayload', () => {
     expect(payload).not.toHaveProperty('permissions');
     expect(payload).not.toHaveProperty('password');
     expect(payload).not.toHaveProperty('passwordResetToken');
-    expect(payload).not.toHaveProperty('isAdmin');
     expect(payload).not.toHaveProperty('isNewUser');
   });
 });
