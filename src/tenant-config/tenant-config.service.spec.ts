@@ -39,6 +39,52 @@ describe('TenantConfigService', () => {
       min: 0,
       max: null,
     },
+    {
+      key: 'channels.whatsapp.enabled',
+      group: 'channels',
+      type: 'boolean',
+      defaultValue: false,
+    },
+    {
+      key: 'channels.whatsapp.monthlyLimit',
+      group: 'channels',
+      type: 'number',
+      defaultValue: 0,
+      min: 0,
+      max: null,
+    },
+    {
+      key: 'messages.bolsa.utilidad',
+      group: 'messages',
+      type: 'number',
+      defaultValue: 0,
+      min: 0,
+      max: null,
+    },
+    {
+      key: 'messages.bolsa.marketingComercial',
+      group: 'messages',
+      type: 'number',
+      defaultValue: 0,
+      min: 0,
+      max: null,
+    },
+    {
+      key: 'messages.bolsa.autenticacion',
+      group: 'messages',
+      type: 'number',
+      defaultValue: 0,
+      min: 0,
+      max: null,
+    },
+    {
+      key: 'messages.bolsa.servicio',
+      group: 'messages',
+      type: 'number',
+      defaultValue: 0,
+      min: 0,
+      max: null,
+    },
   ];
 
   beforeEach(async () => {
@@ -174,6 +220,71 @@ describe('TenantConfigService', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('upsertConfig reparte las bolsas al cambiar la bolsa global de WhatsApp', async () => {
+    tenantConfigModel.findOne.mockReturnValue({ exec: () => Promise.resolve(null) });
+    tenantConfigModel.create.mockImplementation((data: any) => ({
+      toObject: () => data,
+    }));
+
+    const result = await service.upsertConfig({
+      tenantId: '0000000',
+      values: {
+        'channels.whatsapp.enabled': true,
+        'channels.whatsapp.monthlyLimit': 3001,
+      },
+    });
+
+    expect(result.data.values['messages.bolsa.utilidad']).toBe(751);
+    expect(result.data.values['messages.bolsa.marketingComercial']).toBe(750);
+    expect(result.data.values['messages.bolsa.servicio']).toBe(750);
+  });
+
+  it('upsertConfig rechaza cuando la suma de bolsas no cuadra con la global', async () => {
+    const doc: any = {
+      tenantId: '0000000',
+      company: 'BPONET',
+      version: 1,
+      values: {
+        'channels.whatsapp.enabled': true,
+        'channels.whatsapp.monthlyLimit': 10,
+        'messages.bolsa.utilidad': 10,
+        'messages.bolsa.marketingComercial': 0,
+        'messages.bolsa.autenticacion': 0,
+        'messages.bolsa.servicio': 0,
+      },
+      save: jest.fn().mockResolvedValue(true),
+      toObject() {
+        return { ...this, save: undefined };
+      },
+    };
+    tenantConfigModel.findOne.mockReturnValue({ exec: () => Promise.resolve(doc) });
+
+    await expect(
+      service.upsertConfig({
+        tenantId: '0000000',
+        values: { 'messages.bolsa.servicio': 5 },
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('upsertConfig permite bolsas libres cuando la global es 0', async () => {
+    tenantConfigModel.findOne.mockReturnValue({ exec: () => Promise.resolve(null) });
+    tenantConfigModel.create.mockImplementation((data: any) => ({
+      toObject: () => data,
+    }));
+
+    const result = await service.upsertConfig({
+      tenantId: '0000000',
+      values: {
+        'channels.whatsapp.enabled': true,
+        'channels.whatsapp.monthlyLimit': 0,
+        'messages.bolsa.servicio': 500,
+      },
+    });
+
+    expect(result.data.values['messages.bolsa.servicio']).toBe(500);
+  });
+
   it('patchValues mezcla e incrementa versión sobre config existente', async () => {
     const doc: any = {
       tenantId: '0000000',
@@ -218,8 +329,8 @@ describe('TenantConfigService', () => {
 
   it('getCatalog ordena/lista definiciones', async () => {
     const result = await service.getCatalog(true);
-    expect(result.data).toHaveLength(2);
-    expect(result.meta.totalData).toBe(2);
+    expect(result.data).toHaveLength(definitions.length);
+    expect(result.meta.totalData).toBe(definitions.length);
   });
 
   it('createDefinition rechaza duplicados', async () => {
@@ -338,7 +449,7 @@ describe('TenantConfigService', () => {
 
       const removed = await service.purgeDeprecatedCatalog();
 
-      expect(removed).toBe(1);
+      expect(removed).toBe(3);
       expect(updateMany).toHaveBeenCalled();
     });
   });
