@@ -29,7 +29,22 @@ import { PatchTenantConfigValuesDto } from './dto/tenant-config.dto';
  * los tenants al arrancar (p. ej. `limits.maxAgents`, reemplazada por
  * `limits.roles.AGE`).
  */
-const DEPRECATED_POLICY_KEYS = ['limits.maxAgents'];
+const DEPRECATED_POLICY_KEYS = [
+  'limits.maxAgents',
+  'messages.texto.limit',
+  'messages.audio.limit',
+];
+
+/** Bolsa global de WhatsApp (tope total del canal, `0` = ilimitado). */
+const WHATSAPP_GLOBAL_BAG_KEY = 'channels.whatsapp.monthlyLimit';
+
+/** Bolsas por categoría de WhatsApp (deben sumar la bolsa global cuando > 0). */
+const WHATSAPP_CATEGORY_BAG_KEYS = [
+  'messages.bolsa.utilidad',
+  'messages.bolsa.marketingComercial',
+  'messages.bolsa.autenticacion',
+  'messages.bolsa.servicio',
+];
 
 @Injectable()
 export class TenantConfigService {
@@ -386,13 +401,16 @@ export class TenantConfigService {
     values?: Record<string, any>;
   }) {
     const sanitized = await this.sanitizeValues(dto.values || {});
+    const incomingKeys = Object.keys(sanitized);
 
     const existing = await this.tenantConfigModel
       .findOne({ tenantId: dto.tenantId })
       .exec();
 
     if (existing) {
-      existing.values = { ...(existing.values || {}), ...sanitized };
+      const merged = { ...(existing.values || {}), ...sanitized };
+      this.applyWhatsappBagRules(merged, incomingKeys, existing.values || {});
+      existing.values = merged;
       if (dto.company) existing.company = dto.company;
       if (dto.isActive !== undefined) existing.isActive = dto.isActive;
       existing.version = (existing.version || 0) + 1;
@@ -400,25 +418,30 @@ export class TenantConfigService {
       return this.wrapConfig(existing.toObject());
     }
 
+    const merged = { ...sanitized };
+    this.applyWhatsappBagRules(merged, incomingKeys);
     const created = await this.tenantConfigModel.create({
       tenantId: dto.tenantId,
       company: dto.company ?? '',
       isActive: dto.isActive ?? true,
       version: 1,
-      values: sanitized,
+      values: merged,
     });
     return this.wrapConfig(created.toObject());
   }
 
   async patchValues(tenantId: string, dto: PatchTenantConfigValuesDto) {
     const sanitized = await this.sanitizeValues(dto.values || {});
+    const incomingKeys = Object.keys(sanitized);
 
     const existing = await this.tenantConfigModel
       .findOne({ tenantId })
       .exec();
 
     if (existing) {
-      existing.values = { ...(existing.values || {}), ...sanitized };
+      const merged = { ...(existing.values || {}), ...sanitized };
+      this.applyWhatsappBagRules(merged, incomingKeys, existing.values || {});
+      existing.values = merged;
       existing.version = (existing.version || 0) + 1;
       await existing.save();
       return this.wrapConfig(existing.toObject());
@@ -430,6 +453,7 @@ export class TenantConfigService {
       ...this.defaultsFromCatalog(defs),
       ...sanitized,
     };
+    this.applyWhatsappBagRules(allValues, incomingKeys);
     const created = await this.tenantConfigModel.create({
       tenantId,
       company: '',
@@ -438,6 +462,55 @@ export class TenantConfigService {
       values: allValues,
     });
     return this.wrapConfig(created.toObject());
+  }
+
+  /**
+   * Coherencia de las bolsas de WhatsApp:
+   * - Si `channels.whatsapp.enabled = true` y la bolsa global > 0, las 4 bolsas
+   *   por categoría deben sumar exactamente la global (ninguna puede ser 0).
+   * - Si el payload cambió la global, se **redistribuye** automáticamente
+   *   (reparto igual; el resto a `utilidad`).
+   * - Si solo cambiaron categorías, se **valida** la suma.
+   * - Con global = 0 (ilimitada) o `enabled = false` (BYO) no hay restricción.
+   */
+  private applyWhatsappBagRules(
+    merged: Record<string, any>,
+    incomingKeys: string[],
+    previousValues: Record<string, any> = {},
+  ): void {
+    const enabled = merged['channels.whatsapp.enabled'] === true;
+    const global = Number(merged[WHATSAPP_GLOBAL_BAG_KEY] ?? 0);
+    if (!enabled || !(global > 0)) return;
+
+    const globalChanged =
+      incomingKeys.includes(WHATSAPP_GLOBAL_BAG_KEY) &&
+      Number(merged[WHATSAPP_GLOBAL_BAG_KEY] ?? 0) !==
+        Number(previousValues[WHATSAPP_GLOBAL_BAG_KEY] ?? 0);
+
+    if (globalChanged) {
+      const base = Math.floor(global / WHATSAPP_CATEGORY_BAG_KEYS.length);
+      const remainder = global % WHATSAPP_CATEGORY_BAG_KEYS.length;
+      WHATSAPP_CATEGORY_BAG_KEYS.forEach((key, index) => {
+        merged[key] = base + (index === 0 ? remainder : 0);
+      });
+      return;
+    }
+
+    let sum = 0;
+    for (const key of WHATSAPP_CATEGORY_BAG_KEYS) {
+      const value = Number(merged[key] ?? 0);
+      if (!(value > 0)) {
+        throw new BadRequestException(
+          'Con una bolsa global de WhatsApp definida, cada categoría debe tener un tope mayor a 0.',
+        );
+      }
+      sum += value;
+    }
+    if (sum !== global) {
+      throw new BadRequestException(
+        `La suma de las bolsas por categoría (${sum}) debe ser igual a "WhatsApp por mes" (${global}).`,
+      );
+    }
   }
 
   /**
