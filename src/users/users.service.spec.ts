@@ -193,6 +193,29 @@ describe('UsersService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
+    it('bloquea la creación si se alcanzó el tope del rol en la empresa', async () => {
+      tenantConfigServiceMock.getPolicyValue.mockResolvedValue(0);
+      tenantConfigServiceMock.getConfiguredValue.mockResolvedValue({
+        isSet: true,
+        value: 1,
+      });
+      mockUserModel.countDocuments.mockReturnValue({
+        setOptions: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(1),
+        }),
+      });
+
+      await expect(
+        service.create({
+          name: 'Juan',
+          lastName: 'Pérez',
+          email: 'rol@mail.com',
+          company: 'EmpresaX',
+          roles: [{ codeRol: 'ADM', name: 'Admin' }],
+        } as any),
+      ).rejects.toThrow(/rol ADM/);
+    });
+
     it('marca usuario de prueba y calcula trialEndsAt con TEST_USER_DAYS', async () => {
       const result = await service.create({
         name: 'Trial',
@@ -564,6 +587,47 @@ describe('UsersService', () => {
         trialStartedAt: null,
         trialEndsAt: null,
       });
+    });
+
+    it('permite al SuperAdmin quitar isSuperAdmin e isAdmin', async () => {
+      mockUserModel.findByIdAndUpdate.mockReturnValue(
+        leanExec({ _id: 'a', isSuperAdmin: false, isAdmin: false }),
+      );
+
+      await service.update(
+        'a',
+        { isSuperAdmin: false, isAdmin: false } as any,
+        { isSuperAdmin: true },
+      );
+
+      const calls = mockUserModel.findByIdAndUpdate.mock.calls;
+      const operation = calls[calls.length - 1][1];
+      expect(operation.$set).toMatchObject({
+        isSuperAdmin: false,
+        isAdmin: false,
+      });
+    });
+
+    it('ignora isSuperAdmin cuando el solicitante no es SuperAdmin', async () => {
+      mockUserModel.findOne.mockReturnValueOnce({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue({ _id: 'a', isSuperAdmin: false }),
+          }),
+        }),
+      });
+      mockUserModel.findByIdAndUpdate.mockReturnValue(leanExec({ _id: 'a' }));
+
+      await service.update(
+        'a',
+        { isSuperAdmin: true, isAdmin: false } as any,
+        { isAdmin: true },
+      );
+
+      const calls = mockUserModel.findByIdAndUpdate.mock.calls;
+      const operation = calls[calls.length - 1][1];
+      expect(operation.$set.isSuperAdmin).toBeUndefined();
+      expect(operation.$set).toMatchObject({ isAdmin: false });
     });
   });
 
