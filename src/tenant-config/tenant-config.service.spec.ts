@@ -449,7 +449,7 @@ describe('TenantConfigService', () => {
 
       const removed = await service.purgeDeprecatedCatalog();
 
-      expect(removed).toBe(3);
+      expect(removed).toBe(5);
       expect(updateMany).toHaveBeenCalled();
     });
   });

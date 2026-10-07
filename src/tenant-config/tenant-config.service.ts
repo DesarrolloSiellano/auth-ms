@@ -33,6 +33,8 @@ const DEPRECATED_POLICY_KEYS = [
   'limits.maxAgents',
   'messages.texto.limit',
   'messages.audio.limit',
+  'channels.whatsapp.platformPhoneNumberId',
+  'channels.whatsapp.platformDisplayNumber',
 ];
 
 /** Bolsa global de WhatsApp (tope total del canal, `0` = ilimitado). */
@@ -466,21 +468,20 @@ export class TenantConfigService {
 
   /**
    * Coherencia de las bolsas de WhatsApp:
-   * - Si `channels.whatsapp.enabled = true` y la bolsa global > 0, las 4 bolsas
-   *   por categoría deben sumar exactamente la global (ninguna puede ser 0).
+   * - Si la bolsa global > 0, las 4 bolsas por categoría deben sumar
+   *   exactamente la global (ninguna puede ser 0).
    * - Si el payload cambió la global, se **redistribuye** automáticamente
    *   (reparto igual; el resto a `utilidad`).
    * - Si solo cambiaron categorías, se **valida** la suma.
-   * - Con global = 0 (ilimitada) o `enabled = false` (BYO) no hay restricción.
+   * - Con global = 0 (ilimitada) no hay restricción.
    */
   private applyWhatsappBagRules(
     merged: Record<string, any>,
     incomingKeys: string[],
     previousValues: Record<string, any> = {},
   ): void {
-    const enabled = merged['channels.whatsapp.enabled'] === true;
     const global = Number(merged[WHATSAPP_GLOBAL_BAG_KEY] ?? 0);
-    if (!enabled || !(global > 0)) return;
+    if (!(global > 0)) return;
 
     const globalChanged =
       incomingKeys.includes(WHATSAPP_GLOBAL_BAG_KEY) &&
