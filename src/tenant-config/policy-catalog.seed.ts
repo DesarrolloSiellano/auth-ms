@@ -108,25 +108,6 @@ const select = (
   isSystem: true,
 });
 
-const text = (
-  key: string,
-  label: string,
-  group: string,
-  defaultValue: string,
-  order: number,
-  description = '',
-): SeedPolicy => ({
-  key,
-  label,
-  description,
-  group,
-  type: 'text',
-  defaultValue,
-  unit: '',
-  order,
-  isSystem: true,
-});
-
 /**
  * Catálogo semilla de políticas. Estas definiciones se siembran en
  * `policy_definitions` (el SuperAdmin puede editarlas o crear nuevas).
@@ -165,27 +146,11 @@ export const POLICY_CATALOG_SEED: SeedPolicy[] = [
   ),
   bool(
     'channels.whatsapp.enabled',
-    'WhatsApp API de plataforma',
+    'Conexiones por API',
     'channels',
-    false,
+    true,
     12,
-    'Si está deshabilitado, la empresa configura su propia API de WhatsApp (BYO). Si se habilita, la plataforma provee el API y aplican las bolsas/límites de WhatsApp.',
-  ),
-  text(
-    'channels.whatsapp.platformPhoneNumberId',
-    'WhatsApp plataforma - Phone Number ID',
-    'channels',
-    '',
-    12.1,
-    'Phone Number ID de WhatsApp que la plataforma asigna a la empresa (solo aplica si el API de plataforma está habilitado).',
-  ),
-  text(
-    'channels.whatsapp.platformDisplayNumber',
-    'WhatsApp plataforma - Número visible',
-    'channels',
-    '',
-    12.2,
-    'Número visible de WhatsApp que la plataforma asigna a la empresa.',
+    'Si está habilitado, la empresa puede crear conexiones por API (BYO, su propia cuenta de Meta). Si se deshabilita, solo se pueden crear conexiones por QR.',
   ),
   num(
     'channels.whatsapp.monthlyLimit',
@@ -318,8 +283,26 @@ export const POLICY_CATALOG_SEED: SeedPolicy[] = [
   num('limits.maxUsers', 'Máx. usuarios', 'limits', 0, 50, '0 = ilimitado'),
   num('limits.maxStorageMb', 'Máx. almacenamiento', 'limits', 0, 52, '0 = ilimitado', 'MB'),
   // Tope por rol. Se crea una política `limits.roles.<CODE>` por cada rol.
-  num('limits.roles.AGE', 'Máx. agentes', 'limits', 50, 53, '0 = ilimitado'),
-  num('limits.maxChatbotFlows', 'Máx. flujos de chatbot', 'limits', 20, 55),
+  num('limits.roles.AGE', 'Máx. agentes', 'limits', 5, 53, '0 = ilimitado'),
+  num('limits.maxChatbotFlows', 'Máx. flujos de chatbot', 'limits', 2, 55),
+  num(
+    'limits.maxWhatsappApiConnections',
+    'Máx. conexiones por API',
+    'limits',
+    0,
+    57,
+    '0 = ilimitado',
+    'conexiones',
+  ),
+  num(
+    'limits.maxWhatsappQrConnections',
+    'Máx. conexiones por QR',
+    'limits',
+    0,
+    58,
+    '0 = ilimitado',
+    'conexiones',
+  ),
   num(
     'limits.trialDays',
     'Días de prueba',
