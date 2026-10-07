@@ -33,7 +33,6 @@ import {
 } from './dto/policy-definition.dto';
 import {
   PatchTenantConfigValuesDto,
-  ReportTenantUsageDto,
 } from './dto/tenant-config.dto';
 
 @ApiTags('tenants')
@@ -218,68 +217,6 @@ export class TenantConfigController {
     return this.tenantConfigService.listConfigs();
   }
 
-  // ---------------------------------------------------------------- Usage
-
-  @Post('usage/report')
-  @UseGuards(ServiceOrJwtGuard)
-  @ApiOperation({
-    summary: 'Reporta consumo (deltas) de un tenant',
-    description:
-      'Acepta JWT o service-key. Envía deltas por métrica; el servidor acumula con $inc.',
-  })
-  reportUsage(@Body() dto: ReportTenantUsageDto) {
-    return this.tenantConfigService.reportUsage(
-      dto.tenantId,
-      dto.period,
-      dto.metrics,
-      dto.reportId,
-    );
-  }
-
-  @Get('usage')
-  @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: 'Lista el consumo de todos los tenants (SuperAdmin)' })
-  @ApiQuery({ name: 'period', required: false, type: String })
-  listUsage(@Query('period') period: string | undefined, @Req() req: any) {
-    this.assertSuperAdmin(req);
-    return this.tenantConfigService.listUsage(period);
-  }
-
-  @Get('usage/:tenantId')
-  @ParamFormat({ param: 'tenantId', kind: 'token' })
-  @UseGuards(ServiceOrJwtGuard)
-  @ApiOperation({ summary: 'Obtiene el consumo de un tenant' })
-  @ApiQuery({ name: 'period', required: false, type: String })
-  getUsage(
-    @Param('tenantId') tenantId: string,
-    @Query('period') period?: string,
-    @Req() req?: any,
-  ) {
-    const isSuper = req?.user?.isSuperAdmin === true;
-    const isService = req?.user?.isService === true;
-    const finalTenant =
-      req?.user && !isSuper && !isService
-        ? req.user.tenantId || req.user.company
-        : tenantId;
-    return this.tenantConfigService.getUsage(finalTenant, period);
-  }
-
-  @Get('usage/:tenantId/periods')
-  @ParamFormat({ param: 'tenantId', kind: 'token' })
-  @UseGuards(ServiceOrJwtGuard)
-  @ApiOperation({
-    summary: 'Lista los períodos con consumo de un tenant (último año)',
-  })
-  listUsagePeriods(@Param('tenantId') tenantId: string, @Req() req?: any) {
-    const isSuper = req?.user?.isSuperAdmin === true;
-    const isService = req?.user?.isService === true;
-    const finalTenant =
-      req?.user && !isSuper && !isService
-        ? req.user.tenantId || req.user.company
-        : tenantId;
-    return this.tenantConfigService.listUsagePeriods(finalTenant);
-  }
-
   // ------------------------------------------------------------------ TCP
 
   @MessagePattern({ cmd: 'getTenantConfig' })
@@ -293,24 +230,6 @@ export class TenantConfigController {
   @MessagePattern({ cmd: 'getTenantPolicyCatalog' })
   msGetPolicyCatalog() {
     return this.tenantConfigService.getCatalog(true);
-  }
-
-  @MessagePattern({ cmd: 'reportTenantUsage' })
-  msReportTenantUsage(@Payload() payload: any) {
-    return this.tenantConfigService.reportUsage(
-      payload?.tenantId,
-      payload?.period,
-      payload?.metrics,
-      payload?.reportId,
-    );
-  }
-
-  @MessagePattern({ cmd: 'getTenantUsage' })
-  msGetTenantUsage(@Payload() payload: any) {
-    return this.tenantConfigService.getUsage(
-      payload?.tenantId,
-      payload?.period,
-    );
   }
 
   @MessagePattern({ cmd: 'setTenantConfig' })
