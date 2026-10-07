@@ -658,10 +658,13 @@ export class UsersService {
       }
     }
 
+    const requesterIsSuper = requester?.isSuperAdmin === true;
+    const requesterIsAdminOrSuper =
+      requesterIsSuper || requester?.isAdmin === true;
+
     const setFields: any = { ...updateUserDto };
     // Defensa en profundidad: campos nunca editables por esta vía.
     for (const field of [
-      'isSuperAdmin',
       'company',
       'tenantId',
       'password',
@@ -678,14 +681,12 @@ export class UsersService {
     ]) {
       delete setFields[field];
     }
-    // A2b: `permissions`/`modules` solo SuperAdmin; `isAdmin` admin/SuperAdmin
-    // (no usuarios de servicio anónimos).
-    const requesterIsSuper = requester?.isSuperAdmin === true;
-    const requesterIsAdminOrSuper =
-      requesterIsSuper || requester?.isAdmin === true;
+    // A2b: `permissions`/`modules` e `isSuperAdmin` solo SuperAdmin;
+    // `isAdmin` admin/SuperAdmin (no usuarios de servicio anónimos).
     if (!requesterIsSuper) {
       delete setFields.permissions;
       delete setFields.modules;
+      delete setFields.isSuperAdmin;
     }
     if (!requesterIsAdminOrSuper) {
       delete setFields.isAdmin;

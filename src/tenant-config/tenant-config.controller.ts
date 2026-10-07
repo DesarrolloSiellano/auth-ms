@@ -264,6 +264,22 @@ export class TenantConfigController {
     return this.tenantConfigService.getUsage(finalTenant, period);
   }
 
+  @Get('usage/:tenantId/periods')
+  @ParamFormat({ param: 'tenantId', kind: 'token' })
+  @UseGuards(ServiceOrJwtGuard)
+  @ApiOperation({
+    summary: 'Lista los períodos con consumo de un tenant (último año)',
+  })
+  listUsagePeriods(@Param('tenantId') tenantId: string, @Req() req?: any) {
+    const isSuper = req?.user?.isSuperAdmin === true;
+    const isService = req?.user?.isService === true;
+    const finalTenant =
+      req?.user && !isSuper && !isService
+        ? req.user.tenantId || req.user.company
+        : tenantId;
+    return this.tenantConfigService.listUsagePeriods(finalTenant);
+  }
+
   // ------------------------------------------------------------------ TCP
 
   @MessagePattern({ cmd: 'getTenantConfig' })

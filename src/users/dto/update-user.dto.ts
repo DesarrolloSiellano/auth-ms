@@ -13,11 +13,12 @@ import { Rol, Permission, Module } from './create-user.dto';
  *
  * Excluye deliberadamente campos privilegiados para evitar mass-assignment /
  * escalada de privilegios:
- * `_id, isSuperAdmin, company, tenantId, password, passwordResetToken,
- * passwordResetExpires, permissions, modules, created, modified, idUser*`.
+ * `_id, company, tenantId, password, passwordResetToken, passwordResetExpires,
+ * created, modified, idUser*`.
  *
- * `isAdmin` se acepta pero el controller/servicio restringen su cambio a un
- * SuperAdmin.
+ * `isAdmin` se acepta pero el servicio restringe su cambio a admin/SuperAdmin.
+ * `permissions`/`modules`/`isSuperAdmin` se aceptan pero el servicio los
+ * restringe a SuperAdmin.
  */
 export class UpdateUserDto {
   @ApiPropertyOptional({ example: 'Juan' })
@@ -69,6 +70,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isAdmin?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  isSuperAdmin?: boolean;
 
   @ApiPropertyOptional({ type: () => [Rol] })
   @IsOptional()

@@ -30,8 +30,8 @@
 - **Usuarios (creación/edición) — A2b:**
   - `roles` e `isAdmin` → los gestiona **admin** (roles con validación de topes).
   - `permissions` y `modules` → **solo SuperAdmin** (en creación individual, masiva y edición; se ignoran para admin).
-  - `isSuperAdmin` → solo SuperAdmin al crear; nunca cambiable por update.
-  - Campos nunca editables: `isSuperAdmin, company, tenantId, password, tokens, _id, created/modified`.
+  - `isSuperAdmin` → **solo SuperAdmin** (en creación y edición); para el resto se ignora.
+  - Campos nunca editables: `company, tenantId, password, tokens, _id, created/modified`.
   - Admin no puede modificar a un SuperAdmin.
 - **Creador externo (TCP):** confiable (puede asignar roles/permissions/modules y `_id` válido).
 - **`check-availability`:** admin+superadmin.
