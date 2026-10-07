@@ -241,10 +241,16 @@ export class TenantConfigService {
       .lean()
       .exec();
 
-    const query = tenantId ? { tenantId } : company ? { company } : null;
-    const config = query
-      ? await this.tenantConfigModel.findOne(query).lean().exec()
-      : null;
+    // Busca por tenantId y/o company (tolerante a valores legados donde el
+    // `tenantId` del token no coincide con el del documento). Misma estrategia
+    // que `getPolicyValue`.
+    const or: any[] = [];
+    if (tenantId) or.push({ tenantId });
+    if (company) or.push({ company });
+    const config =
+      or.length > 0
+        ? await this.tenantConfigModel.findOne({ $or: or }).lean().exec()
+        : null;
 
     const values: Record<string, any> = {};
     for (const def of definitions) {
@@ -269,8 +275,10 @@ export class TenantConfigService {
   /** Crea la configuración del tenant si no existe (idempotente). */
   async ensureConfig(tenantId: string, company: string): Promise<boolean> {
     if (!tenantId) return false;
+    const or: any[] = [{ tenantId }];
+    if (company) or.push({ company });
     const exists = await this.tenantConfigModel
-      .findOne({ tenantId })
+      .findOne({ $or: or })
       .lean()
       .exec();
     if (exists) return false;
@@ -324,10 +332,13 @@ export class TenantConfigService {
     company: string | undefined,
     key: string,
   ): Promise<{ isSet: boolean; value: any }> {
-    const query = tenantId ? { tenantId } : company ? { company } : null;
-    const config = query
-      ? await this.tenantConfigModel.findOne(query).lean().exec()
-      : null;
+    const or: any[] = [];
+    if (tenantId) or.push({ tenantId });
+    if (company) or.push({ company });
+    const config =
+      or.length > 0
+        ? await this.tenantConfigModel.findOne({ $or: or }).lean().exec()
+        : null;
     const value = config?.values?.[key];
     return { isSet: value !== undefined, value };
   }
@@ -550,9 +561,10 @@ export class TenantConfigService {
     }
 
     const inc: Record<string, number> = {};
-    for (const [key, value] of Object.entries(metrics || {})) {
-      const delta = Number(value);
-      if (!Number.isFinite(delta) || delta === 0) continue;
+    for (const [key, delta] of Object.entries(
+      this.flattenMetrics(metrics || {}),
+    )) {
+      if (delta === 0) continue;
       inc[`metrics.${key}`] = delta;
     }
 
@@ -570,7 +582,9 @@ export class TenantConfigService {
 
     return {
       message: 'Usage reported successfully',
-      data: updated,
+      data: updated
+        ? { ...updated, metrics: this.flattenMetrics(updated.metrics || {}) }
+        : updated,
       meta: { totalData: 1 },
     };
   }
@@ -586,7 +600,10 @@ export class TenantConfigService {
 
     return {
       message: 'Tenant usage retrieved successfully',
-      data: usage,
+      data: usage.map((u: any) => ({
+        ...u,
+        metrics: this.flattenMetrics(u.metrics || {}),
+      })),
       meta: { totalData: usage.length },
     };
   }
@@ -602,9 +619,98 @@ export class TenantConfigService {
 
     return {
       message: 'Tenant usage list retrieved successfully',
-      data: usage,
+      data: usage.map((u: any) => ({
+        ...u,
+        metrics: this.flattenMetrics(u.metrics || {}),
+      })),
       meta: { totalData: usage.length },
     };
+  }
+
+  /**
+   * Períodos con consumo reportado dentro del último año (solo los existentes,
+   * sin sintetizar meses). `now` es inyectable para pruebas.
+   */
+  async listUsagePeriods(tenantId: string, months = 12, now = new Date()) {
+    let timezone = 'America/Bogota';
+    try {
+      const tzRaw = await this.getPolicyValue(
+        tenantId,
+        undefined,
+        'general.timezone',
+      );
+      if (typeof tzRaw === 'string' && tzRaw.trim()) timezone = tzRaw.trim();
+    } catch {
+      // Se usa la zona por defecto.
+    }
+
+    const current = this.monthInTimezone(now, timezone);
+    const cutoff = this.shiftMonth(current, -(months - 1));
+
+    const periods: string[] = await this.tenantUsageModel.distinct('period', {
+      tenantId,
+      period: { $gte: cutoff, $lte: current },
+    });
+
+    const data = (periods || [])
+      .filter((p) => /^\d{4}-\d{2}$/.test(p))
+      .sort()
+      .reverse();
+
+    return {
+      message: 'Tenant usage periods retrieved successfully',
+      data,
+      meta: { totalData: data.length },
+    };
+  }
+
+  /** `YYYY-MM` del mes de `date` en la zona IANA indicada. */
+  private monthInTimezone(date: Date, timezone: string): string {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+      }).formatToParts(date);
+      const map: Record<string, string> = {};
+      for (const part of parts) {
+        if (part.type !== 'literal') map[part.type] = part.value;
+      }
+      return `${map.year}-${map.month}`;
+    } catch {
+      return date.toISOString().slice(0, 7);
+    }
+  }
+
+  /** Desplaza un período `YYYY-MM` `delta` meses. */
+  private shiftMonth(period: string, delta: number): string {
+    const [year, month] = period.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1 + delta, 1));
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  /**
+   * Aplana métricas anidadas a claves con puntos y coerciona a número
+   * (`{ whatsapp: { sent: 5 } }` → `{ 'whatsapp.sent': 5 }`). Evita persistir
+   * y devolver objetos anidados que el frontend renderiza como `[object Object]`.
+   */
+  private flattenMetrics(input: unknown, prefix = ''): Record<string, number> {
+    const out: Record<string, number> = {};
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+
+    for (const [key, value] of Object.entries(
+      input as Record<string, unknown>,
+    )) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      if (value === null || value === undefined) continue;
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        Object.assign(out, this.flattenMetrics(value, path));
+        continue;
+      }
+      const num = Number(value);
+      if (Number.isFinite(num)) out[path] = num;
+    }
+    return out;
   }
 
   // --------------------------------------------------------------- Helpers

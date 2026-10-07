@@ -115,6 +115,7 @@ describe('TenantConfigService', () => {
     tenantUsageModel = {
       find: jest.fn().mockReturnValue(sortLean([])),
       findOneAndUpdate: jest.fn(),
+      distinct: jest.fn().mockResolvedValue([]),
     };
     tenantUsageReportModel = {
       create: jest.fn().mockResolvedValue({}),
@@ -165,6 +166,27 @@ describe('TenantConfigService', () => {
     expect(result.data.version).toBe(2);
     expect(result.data.features.pbx).toBe(true);
     expect(result.data.channels.sms.monthlyLimit).toBe(3000);
+  });
+
+  it('resolveConfig busca por tenantId o company ($or)', async () => {
+    tenantConfigModel.findOne.mockReturnValue({
+      lean: () => ({
+        exec: () =>
+          Promise.resolve({
+            tenantId: 'legacy-id',
+            company: 'BPONET',
+            version: 5,
+            values: { 'limits.maxChatbotFlows': 7 },
+          }),
+      }),
+    });
+
+    const result = await service.resolveConfig('0000000', 'BPONET');
+
+    expect(tenantConfigModel.findOne).toHaveBeenCalledWith({
+      $or: [{ tenantId: '0000000' }, { company: 'BPONET' }],
+    });
+    expect(result.data.limits.maxChatbotFlows).toBe(7);
   });
 
   it('resolveConfig usa defaults cuando no hay config', async () => {
@@ -325,6 +347,56 @@ describe('TenantConfigService', () => {
       'rep-1',
     );
     expect(dup.data.duplicated).toBe(true);
+  });
+
+  it('reportUsage aplana métricas anidadas antes del $inc', async () => {
+    tenantUsageModel.findOneAndUpdate.mockReturnValue(lean({ tenantId: '0000000' }));
+
+    await service.reportUsage('0000000', '2026-09', {
+      whatsapp: { sent: 5 },
+      'sms.sent': 2,
+    } as any);
+
+    const operation = tenantUsageModel.findOneAndUpdate.mock.calls[0][1];
+    expect(operation.$inc).toEqual({
+      'metrics.sms.sent': 2,
+      'metrics.whatsapp.sent': 5,
+    });
+  });
+
+  it('getUsage aplana métricas anidadas de registros legados', async () => {
+    tenantUsageModel.find.mockReturnValue(
+      sortLean([
+        {
+          tenantId: '0000000',
+          period: '2026-09',
+          metrics: { whatsapp: { sent: 3 }, 'sms.sent': 1 },
+        },
+      ]),
+    );
+
+    const result = await service.getUsage('0000000', '2026-09');
+
+    expect(result.data[0].metrics).toEqual({
+      'sms.sent': 1,
+      'whatsapp.sent': 3,
+    });
+  });
+
+  it('listUsagePeriods devuelve solo los períodos existentes del último año', async () => {
+    tenantUsageModel.distinct.mockResolvedValue(['2026-09', '2026-03']);
+
+    const result = await service.listUsagePeriods(
+      '0000000',
+      12,
+      new Date('2026-09-15T12:00:00Z'),
+    );
+
+    expect(result.data).toEqual(['2026-09', '2026-03']);
+    expect(tenantUsageModel.distinct).toHaveBeenCalledWith('period', {
+      tenantId: '0000000',
+      period: { $gte: '2025-10', $lte: '2026-09' },
+    });
   });
 
   it('getCatalog ordena/lista definiciones', async () => {
