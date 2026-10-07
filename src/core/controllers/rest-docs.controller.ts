@@ -788,30 +788,6 @@ const REST_ENDPOINTS: RestEndpointDoc[] = [
     requestExample: { query: {} },
     responseExample: ok([{ tenantId: 'tenant-id', company: 'EmpresaX', version: 3 }], 'Tenant configs retrieved successfully'),
   },
-  {
-    method: 'POST',
-    path: '/api/tenants/usage/report',
-    auth: 'JWT o Service',
-    description: 'Reporta consumo (deltas) de un tenant.',
-    requestExample: { tenantId: 'tenant-id', period: '2026-09', metrics: { 'email.sent': 10 }, reportId: 'uuid' },
-    responseExample: ok({ tenantId: 'tenant-id', period: '2026-09', metrics: { 'email.sent': 10 } }, 'Usage reported successfully'),
-  },
-  {
-    method: 'GET',
-    path: '/api/tenants/usage',
-    auth: 'JWT (SuperAdmin)',
-    description: 'Lista consumo de tenants.',
-    requestExample: { query: { period: '2026-09' } },
-    responseExample: ok([{ tenantId: 'tenant-id', period: '2026-09', metrics: { 'sms.sent': 5 } }], 'Tenant usage list retrieved successfully'),
-  },
-  {
-    method: 'GET',
-    path: '/api/tenants/usage/:tenantId',
-    auth: 'JWT o Service',
-    description: 'Consumo de un tenant.',
-    requestExample: { pathParams: { tenantId: 'tenant-id' }, query: { period: '2026-09' } },
-    responseExample: ok([{ tenantId: 'tenant-id', period: '2026-09', metrics: { 'sms.sent': 5 } }], 'Tenant usage retrieved successfully'),
-  },
 
   // ------------------------------------------------------------- reports
   {

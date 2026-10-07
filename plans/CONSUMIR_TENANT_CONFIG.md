@@ -13,8 +13,6 @@ auth-ms define las **políticas/configuración por tenant**; cada aplicación la
 |---|---|---|
 | `getTenantConfig` | `{ serviceKey, tenantId?, company? }` | Config resuelta (defaults + valores) del tenant |
 | `getTenantPolicyCatalog` | `{ serviceKey }` | Catálogo de políticas (definiciones) |
-| `reportTenantUsage` | `{ serviceKey, tenantId, period, metrics: { key: delta }, reportId }` | Reporta consumo (deltas) |
-| `getTenantUsage` | `{ serviceKey, tenantId, period? }` | Consulta consumo |
 | `setTenantConfig` | `{ serviceKey, tenantId, values }` | (SuperAdmin) fija valores |
 | `upsertPolicyDefinition` | `{ serviceKey, definition }` | (SuperAdmin) crea/edita definición |
 
@@ -23,7 +21,6 @@ auth-ms define las **políticas/configuración por tenant**; cada aplicación la
 - `GET  /api/tenants/policy-catalog` — catálogo.
 - `GET  /api/tenants` / `GET /api/tenants/config/:tenantId` — (SuperAdmin).
 - `PUT  /api/tenants/config/:tenantId` · `PATCH /api/tenants/config/:tenantId/values` — (SuperAdmin).
-- `POST /api/tenants/usage/report` · `GET /api/tenants/usage/:tenantId?period=` — uso.
 - `POST/PUT/DELETE /api/tenants/policy-definitions...` — CRUD catálogo (SuperAdmin).
   Las políticas del sistema (`isSystem: true`) **no se pueden eliminar**; solo las
   creadas nuevas (`isSystem: false`).
@@ -175,15 +172,12 @@ Códigos: `COMPANY_BLOCKED`, `USER_BLOCKED_TEMPORARY`, `USER_BLOCKED_INDEFINITE`
 
 ---
 
-## 4. Reporte de uso (deltas + `$inc`)
+## 4. Consumo / uso
 
-- Cada app lleva su conteo local y envía **deltas** al microservicio por lote/período.
-- `period` en **zona horaria del tenant** (`YYYY-MM`).
-- Enviar `reportId` (UUID) para idempotencia; reintentar sin duplicar.
-- Recomendado: cron/intervalo (5–15 min) o al cerrar cada lote, no por mensaje.
-- Métricas **alineadas al catálogo**: `sms.sent`, `audio.sent`,
-  `whatsapp.utilidad`, `whatsapp.marketingComercial`, `whatsapp.autenticacion`,
-  `whatsapp.servicio`.
+El **consumo ya no se centraliza en auth-ms**. Cada aplicación mantiene su propio
+contador de uso en su base de datos y lo muestra en su propio dashboard. auth-ms
+solo define las **políticas** (features, canales, límites) que las apps consumen y
+aplican localmente.
 
 ---
 
@@ -215,7 +209,7 @@ Códigos: `COMPANY_BLOCKED`, `USER_BLOCKED_TEMPORARY`, `USER_BLOCKED_INDEFINITE`
 3. Resolver tenant desde el contexto/JWT (normalizar `tenantId = company.id`).
 4. Reemplazar valores hardcodeados por `getLimit` / `can`.
 5. Aplicar TZ/locale.
-6. Implementar reporte de uso (deltas + `reportId`, período en TZ).
+6. Mantener el consumo local en la app (no se reporta a auth-ms).
 7. Pruebas: cache, fail-open, cuota excedida, feature off.
 8. Documentar contrato/versión.
 

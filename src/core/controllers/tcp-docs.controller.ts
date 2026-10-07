@@ -342,27 +342,6 @@ const TCP_COMMANDS: TcpCommandDoc[] = [
     payloadExample: { serviceKey: '<SERVICE_API_KEY>' },
   },
   {
-    command: 'reportTenantUsage',
-    domain: 'tenant-config',
-    description: 'Reporta consumo (deltas) de un tenant.',
-    payloadExample: {
-      serviceKey: '<SERVICE_API_KEY>',
-      tenantId: 'tenant-id',
-      period: '2026-09',
-      metrics: { 'sms.sent': 10 },
-    },
-  },
-  {
-    command: 'getTenantUsage',
-    domain: 'tenant-config',
-    description: 'Obtiene el consumo de un tenant.',
-    payloadExample: {
-      serviceKey: '<SERVICE_API_KEY>',
-      tenantId: 'tenant-id',
-      period: '2026-09',
-    },
-  },
-  {
     command: 'setTenantConfig',
     domain: 'tenant-config',
     description: 'Crea/actualiza la configuración de un tenant.',

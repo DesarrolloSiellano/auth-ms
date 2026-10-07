@@ -21,7 +21,6 @@ describe('ReportsService', () => {
   const sessionModel: any = { find: jest.fn() };
   const companyModel: any = { find: jest.fn() };
   const tenantConfigService: any = {
-    listUsage: jest.fn(),
     listConfigs: jest.fn(),
     resolveConfig: jest.fn(),
   };
@@ -53,9 +52,9 @@ describe('ReportsService', () => {
     service = module.get(ReportsService);
   });
 
-  it('catálogo para admin con 4 reportes', () => {
+  it('catálogo para admin con 3 reportes', () => {
     const result = service.getCatalog(admin);
-    expect(result.meta.totalData).toBe(4);
+    expect(result.meta.totalData).toBe(3);
   });
 
   it('rechaza a usuarios sin permisos', () => {

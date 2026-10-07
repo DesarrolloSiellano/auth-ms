@@ -13,10 +13,6 @@ import {
   PolicyDefinition,
 } from './entities/policy-definition.entity';
 import { TenantConfig } from './entities/tenant-config.entity';
-import {
-  TenantUsage,
-  TenantUsageReport,
-} from './entities/tenant-usage.entity';
 import { POLICY_CATALOG_SEED } from './policy-catalog.seed';
 import {
   CreatePolicyDefinitionDto,
@@ -57,10 +53,6 @@ export class TenantConfigService {
     private readonly policyDefinitionModel: Model<PolicyDefinition>,
     @InjectModel('TenantConfig')
     private readonly tenantConfigModel: Model<TenantConfig>,
-    @InjectModel('TenantUsage')
-    private readonly tenantUsageModel: Model<TenantUsage>,
-    @InjectModel('TenantUsageReport')
-    private readonly tenantUsageReportModel: Model<TenantUsageReport>,
     private readonly configService: ConfigService,
   ) {}
 
@@ -530,187 +522,6 @@ export class TenantConfigService {
    */
   async setValues(tenantId: string, values: Record<string, any>) {
     return this.patchValues(tenantId, { values });
-  }
-
-  // ------------------------------------------------------------------- Usage
-
-  async reportUsage(
-    tenantId: string,
-    period: string,
-    metrics: Record<string, number>,
-    reportId?: string,
-  ) {
-    if (reportId) {
-      try {
-        await this.tenantUsageReportModel.create({
-          reportId,
-          tenantId,
-          period,
-        });
-      } catch (error: any) {
-        if (error?.code === 11000) {
-          this.logger.warn(`Reporte duplicado ignorado: ${reportId}`);
-          return {
-            message: 'Usage report already processed',
-            data: { tenantId, period, duplicated: true },
-            meta: { totalData: 1 },
-          };
-        }
-        throw error;
-      }
-    }
-
-    const inc: Record<string, number> = {};
-    for (const [key, delta] of Object.entries(
-      this.flattenMetrics(metrics || {}),
-    )) {
-      if (delta === 0) continue;
-      inc[`metrics.${key}`] = delta;
-    }
-
-    const updated = await this.tenantUsageModel
-      .findOneAndUpdate(
-        { tenantId, period },
-        {
-          ...(Object.keys(inc).length > 0 ? { $inc: inc } : {}),
-          $setOnInsert: { tenantId, period },
-        },
-        { new: true, upsert: true },
-      )
-      .lean()
-      .exec();
-
-    return {
-      message: 'Usage reported successfully',
-      data: updated
-        ? { ...updated, metrics: this.flattenMetrics(updated.metrics || {}) }
-        : updated,
-      meta: { totalData: 1 },
-    };
-  }
-
-  async getUsage(tenantId: string, period?: string) {
-    const query: any = { tenantId };
-    if (period) query.period = period;
-    const usage = await this.tenantUsageModel
-      .find(query)
-      .sort({ period: -1 })
-      .lean()
-      .exec();
-
-    return {
-      message: 'Tenant usage retrieved successfully',
-      data: usage.map((u: any) => ({
-        ...u,
-        metrics: this.flattenMetrics(u.metrics || {}),
-      })),
-      meta: { totalData: usage.length },
-    };
-  }
-
-  async listUsage(period?: string) {
-    const query: any = {};
-    if (period) query.period = period;
-    const usage = await this.tenantUsageModel
-      .find(query)
-      .sort({ period: -1, tenantId: 1 })
-      .lean()
-      .exec();
-
-    return {
-      message: 'Tenant usage list retrieved successfully',
-      data: usage.map((u: any) => ({
-        ...u,
-        metrics: this.flattenMetrics(u.metrics || {}),
-      })),
-      meta: { totalData: usage.length },
-    };
-  }
-
-  /**
-   * Períodos con consumo reportado dentro del último año (solo los existentes,
-   * sin sintetizar meses). `now` es inyectable para pruebas.
-   */
-  async listUsagePeriods(tenantId: string, months = 12, now = new Date()) {
-    let timezone = 'America/Bogota';
-    try {
-      const tzRaw = await this.getPolicyValue(
-        tenantId,
-        undefined,
-        'general.timezone',
-      );
-      if (typeof tzRaw === 'string' && tzRaw.trim()) timezone = tzRaw.trim();
-    } catch {
-      // Se usa la zona por defecto.
-    }
-
-    const current = this.monthInTimezone(now, timezone);
-    const cutoff = this.shiftMonth(current, -(months - 1));
-
-    const periods: string[] = await this.tenantUsageModel.distinct('period', {
-      tenantId,
-      period: { $gte: cutoff, $lte: current },
-    });
-
-    const data = (periods || [])
-      .filter((p) => /^\d{4}-\d{2}$/.test(p))
-      .sort()
-      .reverse();
-
-    return {
-      message: 'Tenant usage periods retrieved successfully',
-      data,
-      meta: { totalData: data.length },
-    };
-  }
-
-  /** `YYYY-MM` del mes de `date` en la zona IANA indicada. */
-  private monthInTimezone(date: Date, timezone: string): string {
-    try {
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-      }).formatToParts(date);
-      const map: Record<string, string> = {};
-      for (const part of parts) {
-        if (part.type !== 'literal') map[part.type] = part.value;
-      }
-      return `${map.year}-${map.month}`;
-    } catch {
-      return date.toISOString().slice(0, 7);
-    }
-  }
-
-  /** Desplaza un período `YYYY-MM` `delta` meses. */
-  private shiftMonth(period: string, delta: number): string {
-    const [year, month] = period.split('-').map(Number);
-    const date = new Date(Date.UTC(year, month - 1 + delta, 1));
-    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-  }
-
-  /**
-   * Aplana métricas anidadas a claves con puntos y coerciona a número
-   * (`{ whatsapp: { sent: 5 } }` → `{ 'whatsapp.sent': 5 }`). Evita persistir
-   * y devolver objetos anidados que el frontend renderiza como `[object Object]`.
-   */
-  private flattenMetrics(input: unknown, prefix = ''): Record<string, number> {
-    const out: Record<string, number> = {};
-    if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
-
-    for (const [key, value] of Object.entries(
-      input as Record<string, unknown>,
-    )) {
-      const path = prefix ? `${prefix}.${key}` : key;
-      if (value === null || value === undefined) continue;
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        Object.assign(out, this.flattenMetrics(value, path));
-        continue;
-      }
-      const num = Number(value);
-      if (Number.isFinite(num)) out[path] = num;
-    }
-    return out;
   }
 
   // --------------------------------------------------------------- Helpers

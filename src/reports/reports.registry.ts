@@ -33,44 +33,6 @@ const AUDIT_STATUS_OPTIONS = [
   { label: 'Fallido', value: 'failed' },
 ];
 
-const QUOTA_MAP: Array<{
-  label: string;
-  usageMetric: string;
-  limitKey: string;
-}> = [
-  { label: 'SMS', usageMetric: 'sms.sent', limitKey: 'channels.sms.monthlyLimit' },
-  {
-    label: 'Audio',
-    usageMetric: 'audio.sent',
-    limitKey: 'channels.audio.monthlyLimit',
-  },
-  {
-    label: 'Correo',
-    usageMetric: 'email.sent',
-    limitKey: 'channels.email.monthlyLimit',
-  },
-  {
-    label: 'WhatsApp utilidad',
-    usageMetric: 'whatsapp.utilidad',
-    limitKey: 'messages.bolsa.utilidad',
-  },
-  {
-    label: 'WhatsApp marketing',
-    usageMetric: 'whatsapp.marketingComercial',
-    limitKey: 'messages.bolsa.marketingComercial',
-  },
-  {
-    label: 'WhatsApp autenticación',
-    usageMetric: 'whatsapp.autenticacion',
-    limitKey: 'messages.bolsa.autenticacion',
-  },
-  {
-    label: 'WhatsApp servicio',
-    usageMetric: 'whatsapp.servicio',
-    limitKey: 'messages.bolsa.servicio',
-  },
-];
-
 function dateRangeFilter(
   field: string,
   filters: any,
@@ -87,12 +49,6 @@ function dateRangeFilter(
       : `${filters.hasta} 23:59:59`;
   }
   return { [field]: range };
-}
-
-function nestedValue(obj: any, path: string): any {
-  return path
-    .split('.')
-    .reduce((acc, part) => (acc ? acc[part] : undefined), obj);
 }
 
 function fullName(u: any): string {
@@ -271,148 +227,6 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
             value: rows.filter((r) => r.estado === 'Cerrada').length,
           },
         ],
-      };
-    },
-  },
-  {
-    id: 'usage-vs-quotas',
-    nombre: 'Uso vs cuotas',
-    descripcion:
-      'Consumo reportado por empresa frente a las cuotas configuradas, con gráfico.',
-    category: 'Consumo',
-    filters: [
-      { key: 'period', label: 'Período (YYYY-MM)', type: 'text' },
-      { key: 'empresa', label: 'Empresa', type: 'text' },
-    ],
-    build: async (ctx, filters, deps): Promise<ReportResult> => {
-      const [usageRes, configRes] = await Promise.all([
-        deps.tenantConfigService.listUsage(filters?.period || undefined),
-        deps.tenantConfigService.listConfigs(),
-      ]);
-
-      const configs: any[] = (configRes?.data || []).filter((c: any) =>
-        ctx.isSuperAdmin
-          ? true
-          : c.tenantId === ctx.tenantId || c.company === ctx.company,
-      );
-      const usage: any[] = (usageRes?.data || []).filter((u: any) => {
-        if (!ctx.isSuperAdmin && !configs.some((c) => c.tenantId === u.tenantId)) {
-          return false;
-        }
-        if (filters?.empresa) {
-          const cfg = configs.find((c) => c.tenantId === u.tenantId);
-          const name = cfg?.company || u.tenantId;
-          if (!new RegExp(filters.empresa, 'i').test(name)) return false;
-        }
-        return true;
-      });
-
-      const usageByTenant = new Map<string, Record<string, number>>();
-      for (const u of usage) {
-        const prev = usageByTenant.get(u.tenantId) || {};
-        for (const [key, value] of Object.entries(u.metrics || {})) {
-          prev[key] = (prev[key] || 0) + Number(value || 0);
-        }
-        usageByTenant.set(u.tenantId, prev);
-      }
-
-      const tenantIds = new Set<string>();
-      configs.forEach((c) => c.tenantId && tenantIds.add(c.tenantId));
-      usage.forEach((u) => u.tenantId && tenantIds.add(u.tenantId));
-
-      const rows: any[] = [];
-      for (const tenantId of tenantIds) {
-        const cfg = configs.find((c) => c.tenantId === tenantId);
-        if (filters?.empresa) {
-          const name = cfg?.company || tenantId;
-          if (!new RegExp(filters.empresa, 'i').test(name)) continue;
-        }
-        const resolved = await deps.tenantConfigService.resolveConfig(
-          tenantId,
-          cfg?.company,
-        );
-        const nested = resolved?.data || {};
-        const metrics = usageByTenant.get(tenantId) || {};
-        for (const quota of QUOTA_MAP) {
-          const used = Number(metrics[quota.usageMetric] || 0);
-          const rawLimit = Number(nestedValue(nested, quota.limitKey) ?? 0);
-          const unlimited = !rawLimit || rawLimit <= 0;
-          const percent = unlimited
-            ? 0
-            : Math.round((used / rawLimit) * 1000) / 10;
-          rows.push({
-            empresa: cfg?.company || tenantId,
-            tenantId,
-            metrica: quota.label,
-            uso: used,
-            cuota: unlimited ? 0 : rawLimit,
-            porcentaje: percent,
-            estado: unlimited
-              ? 'Sin límite'
-              : used > rawLimit
-                ? 'Excedido'
-                : 'OK',
-          });
-        }
-      }
-
-      const chartLabels = QUOTA_MAP.map((q) => q.label);
-      const chartUsed = QUOTA_MAP.map((q) =>
-        rows
-          .filter((r) => r.metrica === q.label)
-          .reduce((acc, r) => acc + r.uso, 0),
-      );
-      const chartLimit = QUOTA_MAP.map((q) =>
-        rows
-          .filter((r) => r.metrica === q.label)
-          .reduce((acc, r) => acc + r.cuota, 0),
-      );
-
-      const columns: ReportColumn[] = [
-        { key: 'empresa', label: 'Empresa' },
-        { key: 'tenantId', label: 'Tenant' },
-        { key: 'metrica', label: 'Métrica' },
-        { key: 'uso', label: 'Uso', type: 'number', align: 'right' },
-        { key: 'cuota', label: 'Cuota', type: 'number', align: 'right' },
-        {
-          key: 'porcentaje',
-          label: '% Uso',
-          type: 'percent',
-          align: 'right',
-          colorRules: [
-            { op: 'gt', value: 100, color: '#dc2626' },
-            { op: 'gte', value: 80, color: '#d97706' },
-          ],
-        },
-        { key: 'estado', label: 'Estado', align: 'center' },
-      ];
-
-      const excedidos = rows.filter((r) => r.estado === 'Excedido').length;
-
-      return {
-        columns,
-        rows,
-        summary: [
-          { label: 'Empresas', value: tenantIds.size },
-          { label: 'Registros', value: rows.length },
-          { label: 'Métricas excedidas', value: excedidos },
-        ],
-        chart: {
-          type: 'bar',
-          labels: chartLabels,
-          datasets: [
-            {
-              label: 'Uso',
-              data: chartUsed,
-              backgroundColor: '#2d3a74',
-            },
-            {
-              label: 'Cuota',
-              data: chartLimit,
-              backgroundColor: '#94a3b8',
-            },
-          ],
-        },
       };
     },
   },
