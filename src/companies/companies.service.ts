@@ -142,8 +142,14 @@ export class CompaniesService {
   }
 
   async update(id: string, updateCompanyDto: UpdateCompanyDto) {
+    // `name` e `id` (RUT/NIT) conforman la identidad del tenant: no son
+    // editables una vez creada la compañía.
+    const safeUpdate: any = { ...updateCompanyDto };
+    delete safeUpdate.name;
+    delete safeUpdate.id;
+
     const updatedCompany = await this.companyModel
-      .findByIdAndUpdate(id, updateCompanyDto, { new: true })
+      .findByIdAndUpdate(id, safeUpdate, { new: true })
       .exec();
 
     if (!updatedCompany) {

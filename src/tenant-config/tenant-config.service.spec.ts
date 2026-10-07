@@ -21,8 +21,6 @@ describe('TenantConfigService', () => {
   let service: TenantConfigService;
   let policyDefinitionModel: any;
   let tenantConfigModel: any;
-  let tenantUsageModel: any;
-  let tenantUsageReportModel: any;
 
   const definitions = [
     {
@@ -112,14 +110,6 @@ describe('TenantConfigService', () => {
         exec: () => Promise.resolve({ modifiedCount: 0 }),
       }),
     };
-    tenantUsageModel = {
-      find: jest.fn().mockReturnValue(sortLean([])),
-      findOneAndUpdate: jest.fn(),
-      distinct: jest.fn().mockResolvedValue([]),
-    };
-    tenantUsageReportModel = {
-      create: jest.fn().mockResolvedValue({}),
-    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -129,11 +119,6 @@ describe('TenantConfigService', () => {
           useValue: policyDefinitionModel,
         },
         { provide: getModelToken('TenantConfig'), useValue: tenantConfigModel },
-        { provide: getModelToken('TenantUsage'), useValue: tenantUsageModel },
-        {
-          provide: getModelToken('TenantUsageReport'),
-          useValue: tenantUsageReportModel,
-        },
         {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('false') },
@@ -328,76 +313,6 @@ describe('TenantConfigService', () => {
     expect(result.data.features.pbx).toBe(true);
   });
 
-  it('reportUsage acumula con $inc y evita duplicados por reportId', async () => {
-    tenantUsageModel.findOneAndUpdate.mockReturnValue(lean({ tenantId: '0000000' }));
-
-    await service.reportUsage('0000000', '2026-09', { 'sms.sent': 10 }, 'rep-1');
-    expect(tenantUsageReportModel.create).toHaveBeenCalledWith({
-      reportId: 'rep-1',
-      tenantId: '0000000',
-      period: '2026-09',
-    });
-    expect(tenantUsageModel.findOneAndUpdate).toHaveBeenCalled();
-
-    tenantUsageReportModel.create.mockRejectedValueOnce({ code: 11000 });
-    const dup = await service.reportUsage(
-      '0000000',
-      '2026-09',
-      { 'sms.sent': 10 },
-      'rep-1',
-    );
-    expect(dup.data.duplicated).toBe(true);
-  });
-
-  it('reportUsage aplana métricas anidadas antes del $inc', async () => {
-    tenantUsageModel.findOneAndUpdate.mockReturnValue(lean({ tenantId: '0000000' }));
-
-    await service.reportUsage('0000000', '2026-09', {
-      whatsapp: { sent: 5 },
-      'sms.sent': 2,
-    } as any);
-
-    const operation = tenantUsageModel.findOneAndUpdate.mock.calls[0][1];
-    expect(operation.$inc).toEqual({
-      'metrics.sms.sent': 2,
-      'metrics.whatsapp.sent': 5,
-    });
-  });
-
-  it('getUsage aplana métricas anidadas de registros legados', async () => {
-    tenantUsageModel.find.mockReturnValue(
-      sortLean([
-        {
-          tenantId: '0000000',
-          period: '2026-09',
-          metrics: { whatsapp: { sent: 3 }, 'sms.sent': 1 },
-        },
-      ]),
-    );
-
-    const result = await service.getUsage('0000000', '2026-09');
-
-    expect(result.data[0].metrics).toEqual({
-      'sms.sent': 1,
-      'whatsapp.sent': 3,
-    });
-  });
-
-  it('listUsagePeriods devuelve solo los períodos existentes del último año', async () => {
-    tenantUsageModel.distinct.mockResolvedValue(['2026-09', '2026-03']);
-
-    const result = await service.listUsagePeriods(
-      '0000000',
-      12,
-      new Date('2026-09-15T12:00:00Z'),
-    );
-
-    expect(result.data).toEqual(['2026-09', '2026-03']);
-    expect(tenantUsageModel.distinct).toHaveBeenCalledWith('period', {
-      tenantId: '0000000',
-      period: { $gte: '2025-10', $lte: '2026-09' },
-    });
-  });
 
   it('getCatalog ordena/lista definiciones', async () => {
     const result = await service.getCatalog(true);

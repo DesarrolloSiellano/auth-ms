@@ -3,10 +3,10 @@ import { TcpDocsController } from './tcp-docs.controller';
 describe('TcpDocsController', () => {
   const controller = new TcpDocsController();
 
-  it('devuelve el catálogo con los 45 comandos TCP', () => {
+  it('devuelve el catálogo con los 43 comandos TCP', () => {
     const result = controller.messagePatterns();
-    expect(result.total).toBe(45);
-    expect(result.commands).toHaveLength(45);
+    expect(result.total).toBe(43);
+    expect(result.commands).toHaveLength(43);
   });
 
   it('incluye validateSession y validateUser', () => {

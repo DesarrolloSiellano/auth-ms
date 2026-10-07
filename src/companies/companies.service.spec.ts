@@ -128,9 +128,24 @@ describe('CompaniesService', () => {
 
   describe('update', () => {
     it('actualiza y devuelve formato estándar', async () => {
-      mockModel.findByIdAndUpdate.mockReturnValue(exec({ _id: 'c1', name: 'Nuevo' }));
-      const result = await service.update('c1', { name: 'Nuevo' } as any);
+      mockModel.findByIdAndUpdate.mockReturnValue(
+        exec({ _id: 'c1', email: 'x@y.com' }),
+      );
+      const result = await service.update('c1', { email: 'x@y.com' } as any);
       expect(result.meta.id).toBe('c1');
+    });
+
+    it('no permite cambiar name ni id (identidad del tenant)', async () => {
+      mockModel.findByIdAndUpdate.mockReturnValue(exec({ _id: 'c1' }));
+
+      await service.update('c1', {
+        name: 'Otro',
+        id: '999',
+        phone: '1',
+      } as any);
+
+      const payload = mockModel.findByIdAndUpdate.mock.calls[0][1];
+      expect(payload).toEqual({ phone: '1' });
     });
 
     it('lanza NotFound', async () => {

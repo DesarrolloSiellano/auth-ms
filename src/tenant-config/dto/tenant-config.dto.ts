@@ -40,27 +40,3 @@ export class PatchTenantConfigValuesDto {
   @IsObject()
   values: Record<string, any>;
 }
-
-export class ReportTenantUsageDto {
-  @ApiProperty({ example: '0000000' })
-  @IsString()
-  @IsNotEmpty()
-  tenantId: string;
-
-  @ApiProperty({ example: '2026-09', description: 'Período YYYY-MM' })
-  @IsString()
-  @IsNotEmpty()
-  period: string;
-
-  @ApiProperty({
-    example: { 'sms.sent': 10, 'whatsapp.utilidad': 3 },
-    description: 'Deltas de consumo por métrica',
-  })
-  @IsObject()
-  metrics: Record<string, number>;
-
-  @ApiPropertyOptional({ example: 'uuid-del-reporte' })
-  @IsOptional()
-  @IsString()
-  reportId?: string;
-}
