@@ -281,6 +281,7 @@ export class MassiveUsersService {
         if (maxUsers > 0) {
           const current = await this.getCompanyUserCount(
             company,
+            tenantId,
             companyUserCounts,
           );
           if (current >= maxUsers) {
@@ -479,12 +480,18 @@ export class MassiveUsersService {
   /** Conteo actual de usuarios activos de la empresa, con caché por empresa. */
   private async getCompanyUserCount(
     company: string,
+    tenantId: string,
     cache: Map<string, number>,
   ): Promise<number> {
     if (cache.has(company)) {
       return cache.get(company) as number;
     }
-    const total = await this.userLimitsService.countActiveUsers(company);
+    const total = await this.userLimitsService.countActiveUsers(
+      company,
+      undefined,
+      undefined,
+      tenantId,
+    );
     cache.set(company, total);
     return total;
   }

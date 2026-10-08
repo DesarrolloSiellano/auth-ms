@@ -54,20 +54,41 @@ export class UsersService {
     const email = this.normalizeEmail(createUserDto.email);
     const username = this.normalizeUsername(createUserDto.username);
 
+    const store = tenantLocalStorage.getStore();
+    const companyInput = createUserDto.company || store?.companyId;
+
+    // Identidad canónica de la empresa: `company = Company.name`,
+    // `tenantId = Company.id` (RUT/NIT). Se deriva de `companies`.
+    let company = companyInput || '';
+    let tenantId = String((createUserDto as any).tenantId || '');
+    if (companyInput) {
+      const identity =
+        await this.tenantConfigService.resolveCompanyIdentity(companyInput);
+      if (!identity) {
+        throw new BadRequestException(
+          `La empresa "${companyInput}" no existe o no está activa`,
+        );
+      }
+      company = identity.name;
+      if (tenantId && tenantId !== identity.id) {
+        throw new BadRequestException(
+          'El tenantId no corresponde a la empresa indicada',
+        );
+      }
+      tenantId = identity.id;
+    } else {
+      tenantId = tenantId || store?.tenantId || company;
+    }
+
     await this.userLimitsService.assertWithinLimits({
-      company: createUserDto.company,
-      tenantId: (createUserDto as any).tenantId,
+      company,
+      tenantId,
       additionalUsers: 1,
       roleDemands: this.userLimitsService.buildRoleDemands(
         this.userLimitsService.extractRoleCodes(createUserDto.roles),
       ),
     });
     await this.ensureUniqueIdentity(email, username);
-
-    const store = tenantLocalStorage.getStore();
-    const company = createUserDto.company || store?.companyId;
-    const tenantId =
-      (createUserDto as any).tenantId || store?.tenantId || company;
 
     // `features.invitations = false` degrada la invitación a correo de
     // bienvenida con usuario y contraseña temporal (sin enlace).
@@ -230,13 +251,26 @@ export class UsersService {
 
     // Apps externas: la empresa/tenant es obligatoria y los topes del tenant
     // se validan de forma centralizada (fail-closed).
-    const company = payload.company;
-    if (!company) {
+    const companyInput = payload.company;
+    if (!companyInput) {
       throw new BadRequestException(
         'La empresa (company) es obligatoria para crear usuarios',
       );
     }
-    const tenantId = payload.tenantId || company;
+    const identity =
+      await this.tenantConfigService.resolveCompanyIdentity(companyInput);
+    if (!identity) {
+      throw new BadRequestException(
+        `La empresa "${companyInput}" no existe o no está activa`,
+      );
+    }
+    const company = identity.name;
+    const tenantId = identity.id;
+    if (payload.tenantId && String(payload.tenantId) !== identity.id) {
+      throw new BadRequestException(
+        'El tenantId no corresponde a la empresa indicada',
+      );
+    }
     await this.userLimitsService.assertWithinLimits({
       company,
       tenantId,
@@ -264,14 +298,14 @@ export class UsersService {
 
     const userData = {
       _id: payload._id,
-      tenantId: payload.tenantId || payload.company || 'default_tenant',
+      tenantId,
       name: payload.name,
       lastName: payload.lastName,
       email: this.normalizeEmail(payload.email),
       phone: payload.phone,
       username: this.normalizeUsername(payload.username || payload.email),
       password: tempPassword,
-      company: payload.company || 'default_company',
+      company,
       redirectUri: payload.redirectUri || null,
       roles: userRoles,
       permissions: userPermissions,
@@ -340,7 +374,8 @@ export class UsersService {
   async findAll(user?: any) {
     const query: any = { deletedAt: null };
     if (user && !user.isSuperAdmin) {
-      query.company = user.company;
+      if (user.company) query.company = user.company;
+      if (user.tenantId) query.tenantId = user.tenantId;
     }
 
     const users = await this.userModel.find(query).lean().exec();
@@ -356,12 +391,9 @@ export class UsersService {
     if (user && !user.isSuperAdmin) {
       const tenantId = user.tenantId || user.company;
       const company = user.company || user.tenantId;
-      if (tenantId && company && tenantId !== company) {
-        query.$or = [{ tenantId }, { company }, { tenantId: company }, { company: tenantId }];
-      } else if (tenantId || company) {
-        const val = tenantId || company;
-        query.$or = [{ tenantId: val }, { company: val }];
-      }
+      // Discriminación estricta por empresa: (tenantId, company).
+      if (company) query.company = company;
+      if (tenantId) query.tenantId = tenantId;
     }
 
     const users = await this.userModel.find(query).lean().exec();
@@ -423,7 +455,8 @@ export class UsersService {
     const and: any[] = [];
 
     if (!isSuperAdmin) {
-      query.company = user.company;
+      if (user.company) query.company = user.company;
+      if (user.tenantId) query.tenantId = user.tenantId;
     } else if (f.company) {
       query.company = new RegExp(this.escapeRegExp(String(f.company)), 'i');
     }
@@ -526,7 +559,8 @@ export class UsersService {
   async findByPagination(user?: any, page = 1, limit = 10) {
     const query: any = { deletedAt: null };
     if (user && !user.isSuperAdmin) {
-      query.company = user.company;
+      if (user.company) query.company = user.company;
+      if (user.tenantId) query.tenantId = user.tenantId;
     }
 
     const skip = (page - 1) * limit;
@@ -583,7 +617,8 @@ export class UsersService {
     };
 
     if (user && !user.isSuperAdmin) {
-      query.company = user.company;
+      if (user.company) query.company = user.company;
+      if (user.tenantId) query.tenantId = user.tenantId;
     }
 
     const users = await this.userModel.find(query).lean().exec();

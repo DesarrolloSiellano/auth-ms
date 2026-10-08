@@ -26,6 +26,7 @@ import {
   ApiParam,
   ApiBody,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ValidateObjectIdGuard } from 'src/core/guards/validateObjectId.guard';
@@ -102,6 +103,26 @@ export class CompaniesController {
   create(@Body() createCompanyDto: CreateCompanyDto, @Req() req: any) {
     this.assertSuperAdmin(req);
     return this.companiesService.create(createCompanyDto);
+  }
+
+  @Get('check-availability')
+  @ApiOperation({
+    summary: 'Verifica si el nombre o el RUT/NIT ya está registrado',
+    description:
+      'Devuelve nameExists e idExists (unicidad). Acepta excludeId para omitir ' +
+      'la propia compañía en edición.',
+  })
+  @ApiQuery({ name: 'name', required: false, type: String })
+  @ApiQuery({ name: 'id', required: false, type: String })
+  @ApiQuery({ name: 'excludeId', required: false, type: String })
+  checkAvailability(
+    @Req() req: any,
+    @Query('name') name?: string,
+    @Query('id') id?: string,
+    @Query('excludeId') excludeId?: string,
+  ) {
+    this.assertSuperAdmin(req);
+    return this.companiesService.checkAvailability({ name, id, excludeId });
   }
 
   @Get()

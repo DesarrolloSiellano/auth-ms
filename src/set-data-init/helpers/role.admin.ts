@@ -26,4 +26,13 @@ export const ROLES = [
     isActive: true,
     isInheritPermissions: false,
   },
+  {
+    name: 'Agente',
+    codeRol: 'AGE',
+    description: 'Rol de solo lectura para revisión de registros',
+    created: new Date(),
+    modiefied: new Date(),
+    isActive: true,
+    isInheritPermissions: false,
+  },
 ];

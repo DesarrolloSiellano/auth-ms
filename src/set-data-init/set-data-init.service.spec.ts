@@ -75,6 +75,7 @@ describe('SetDataInit', () => {
           provide: TenantConfigService,
           useValue: {
             seedDefaultCatalog: jest.fn().mockResolvedValue(0),
+            backfillCompanyNames: jest.fn().mockResolvedValue(0),
             ensureConfig: jest.fn().mockResolvedValue(true),
           },
         },
@@ -186,12 +187,12 @@ describe('SetDataInit', () => {
       { _id: 'p2', name: 'Leer', description: 'd', action: 'read', resource: 'r', type: 't' },
     ];
 
-    it('calcula permisos por rol (ADM/AUD/USR) y crea roles', async () => {
+    it('calcula permisos por rol (ADM/AUD/USR/AGE) y crea roles', async () => {
       mockPermissionsModel.find.mockReturnValue(leanResolve(permissions));
 
       await service.createInitRoles();
 
-      expect(mockRolModel).toHaveBeenCalledTimes(3); // ADM, AUD, USR
+      expect(mockRolModel).toHaveBeenCalledTimes(4); // ADM, USR, AUD, AGE
     });
 
     it('omite roles existentes', async () => {

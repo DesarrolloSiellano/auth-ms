@@ -22,6 +22,7 @@ export interface AuditEntry {
 export interface AuditScope {
   isSuperAdmin: boolean;
   company?: string;
+  tenantId?: string;
 }
 
 export interface AuditMineOptions {
@@ -188,6 +189,7 @@ export class AuditService {
     const query: any = {};
     if (!scope.isSuperAdmin) {
       query.company = scope.company || '__none__';
+      query.tenantId = scope.tenantId || '__none__';
     }
     if (filters.category) query.category = filters.category;
     if (filters.status) query.status = filters.status;

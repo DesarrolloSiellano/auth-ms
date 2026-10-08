@@ -12,6 +12,7 @@ describe('CompaniesService', () => {
     save: jest.fn().mockResolvedValue({ ...data, _id: 'c1', id: 'c1', toObject: () => data }),
   }));
   mockModel.find = jest.fn();
+  mockModel.findOne = jest.fn();
   mockModel.findById = jest.fn();
   mockModel.findByIdAndUpdate = jest.fn();
   mockModel.findByIdAndDelete = jest.fn();
@@ -123,6 +124,38 @@ describe('CompaniesService', () => {
     it('lanza NotFound', async () => {
       mockModel.findById.mockReturnValue(leanExec(null));
       await expect(service.findOne('c1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('checkAvailability', () => {
+    it('detecta nombre y RUT/NIT existentes', async () => {
+      mockModel.findOne
+        .mockReturnValueOnce(leanExec({ _id: 'c1' }))
+        .mockReturnValueOnce(leanExec(null));
+
+      const result = await service.checkAvailability({
+        name: 'EmpresaX',
+        id: '900',
+      });
+
+      expect(result.data).toEqual({ nameExists: true, idExists: false });
+      expect(mockModel.findOne).toHaveBeenCalledWith({ name: 'EmpresaX' });
+      expect(mockModel.findOne).toHaveBeenCalledWith({ id: '900' });
+    });
+
+    it('omite la propia compañía con excludeId', async () => {
+      mockModel.findOne.mockReturnValue(leanExec(null));
+
+      const result = await service.checkAvailability({
+        name: 'EmpresaX',
+        excludeId: 'c1',
+      });
+
+      expect(result.data.nameExists).toBe(false);
+      expect(mockModel.findOne).toHaveBeenCalledWith({
+        _id: { $ne: 'c1' },
+        name: 'EmpresaX',
+      });
     });
   });
 

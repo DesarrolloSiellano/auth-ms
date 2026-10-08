@@ -88,7 +88,8 @@ export class UsersController {
         );
       }
       createUserDto.company = user.company;
-      (createUserDto as any).tenantId = user.tenantId || user.company;
+      // El `tenantId` (RUT/NIT) se deriva de `companies` por el nombre.
+      delete (createUserDto as any).tenantId;
     }
     // El enlace del correo usa el origen real del front que origina la petición.
     const origin = resolveRequestOrigin(req);
