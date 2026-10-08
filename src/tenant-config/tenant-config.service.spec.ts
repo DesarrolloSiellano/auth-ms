@@ -21,6 +21,7 @@ describe('TenantConfigService', () => {
   let service: TenantConfigService;
   let policyDefinitionModel: any;
   let tenantConfigModel: any;
+  let companyModel: any;
 
   const definitions = [
     {
@@ -110,6 +111,7 @@ describe('TenantConfigService', () => {
         exec: () => Promise.resolve({ modifiedCount: 0 }),
       }),
     };
+    companyModel = { findOne: jest.fn().mockReturnValue(lean(null)) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -119,6 +121,7 @@ describe('TenantConfigService', () => {
           useValue: policyDefinitionModel,
         },
         { provide: getModelToken('TenantConfig'), useValue: tenantConfigModel },
+        { provide: getModelToken('Company'), useValue: companyModel },
         {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('false') },
@@ -153,7 +156,7 @@ describe('TenantConfigService', () => {
     expect(result.data.channels.sms.monthlyLimit).toBe(3000);
   });
 
-  it('resolveConfig busca por tenantId o company ($or)', async () => {
+  it('resolveConfig busca por company + tenantId', async () => {
     tenantConfigModel.findOne.mockReturnValue({
       lean: () => ({
         exec: () =>
@@ -169,7 +172,8 @@ describe('TenantConfigService', () => {
     const result = await service.resolveConfig('0000000', 'BPONET');
 
     expect(tenantConfigModel.findOne).toHaveBeenCalledWith({
-      $or: [{ tenantId: '0000000' }, { company: 'BPONET' }],
+      tenantId: '0000000',
+      company: 'BPONET',
     });
     expect(result.data.limits.maxChatbotFlows).toBe(7);
   });
@@ -365,7 +369,7 @@ describe('TenantConfigService', () => {
   });
 
   describe('getPolicyValue', () => {
-    it('busca por tenantId o company con $or', async () => {
+    it('busca por company + tenantId', async () => {
       policyDefinitionModel.findOne.mockReturnValue(
         lean({ key: 'general.timezone', defaultValue: 'America/Bogota' }),
       );
@@ -381,7 +385,8 @@ describe('TenantConfigService', () => {
       );
 
       expect(findOne).toHaveBeenCalledWith({
-        $or: [{ tenantId: 'tenant-x' }, { company: 'tenant-x' }],
+        tenantId: 'tenant-x',
+        company: 'tenant-x',
       });
       expect(value).toBe('Europe/Madrid');
     });
@@ -394,6 +399,55 @@ describe('TenantConfigService', () => {
 
       const value = await service.getPolicyValue('t', 'c', 'general.locale');
       expect(value).toBe('es-CO');
+    });
+  });
+
+  describe('ensureConfig / backfill', () => {
+    it('ensureConfig crea una config por empresa con company y tenantId', async () => {
+      tenantConfigModel.findOne.mockReturnValue(lean(null));
+      tenantConfigModel.create.mockImplementation((data: any) => ({
+        toObject: () => data,
+      }));
+
+      const created = await service.ensureConfig('0000001', 'EmpresaX');
+
+      expect(created).toBe(true);
+      expect(tenantConfigModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: '0000001',
+          company: 'EmpresaX',
+        }),
+      );
+    });
+
+    it('ensureConfig no crea si falta company o tenantId', async () => {
+      expect(await service.ensureConfig('0000001', '')).toBe(false);
+      expect(await service.ensureConfig('', 'EmpresaX')).toBe(false);
+    });
+
+    it('backfillCompanyNames rellena company por tenantId', async () => {
+      tenantConfigModel.find.mockReturnValue({
+        lean: () => ({
+          exec: () =>
+            Promise.resolve([
+              { _id: 'c1', tenantId: '0000001', company: '' },
+            ]),
+        }),
+      });
+      companyModel.findOne.mockReturnValue(
+        lean({ id: '0000001', name: 'EmpresaX' }),
+      );
+      tenantConfigModel.updateOne = jest.fn().mockReturnValue({
+        exec: () => Promise.resolve({ modifiedCount: 1 }),
+      });
+
+      const updated = await service.backfillCompanyNames();
+
+      expect(updated).toBe(1);
+      expect(tenantConfigModel.updateOne).toHaveBeenCalledWith(
+        { _id: 'c1' },
+        { $set: { company: 'EmpresaX' } },
+      );
     });
   });
 

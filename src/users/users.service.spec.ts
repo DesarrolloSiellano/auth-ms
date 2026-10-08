@@ -68,6 +68,12 @@ describe('UsersService', () => {
         .fn()
         .mockResolvedValue({ isSet: false, value: undefined }),
       ensureRoleLimitPolicy: jest.fn().mockResolvedValue(false),
+      resolveCompanyIdentity: jest
+        .fn()
+        .mockImplementation((name: string) =>
+          Promise.resolve({ id: `tenant-${name}`, name }),
+        ),
+      resolveCompanyId: jest.fn().mockResolvedValue('tenant-1'),
     };
     featurePolicyMock = {
       isEnabled: jest.fn().mockResolvedValue(true),

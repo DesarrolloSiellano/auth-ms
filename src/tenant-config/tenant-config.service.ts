@@ -53,6 +53,8 @@ export class TenantConfigService {
     private readonly policyDefinitionModel: Model<PolicyDefinition>,
     @InjectModel('TenantConfig')
     private readonly tenantConfigModel: Model<TenantConfig>,
+    @InjectModel('Company')
+    private readonly companyModel: Model<any>,
     private readonly configService: ConfigService,
   ) {}
 
@@ -227,22 +229,137 @@ export class TenantConfigService {
 
   // ----------------------------------------------------------- Tenant config
 
+  /**
+   * Filtro de búsqueda de config por identidad de tenant. Usa `company` y
+   * `tenantId` juntos (ambos únicos) para garantizar la empresa correcta.
+   */
+  private tenantFilter(
+    tenantId?: string,
+    company?: string,
+  ): Record<string, string> | null {
+    const query: Record<string, string> = {};
+    if (tenantId) query.tenantId = tenantId;
+    if (company) query.company = company;
+    return Object.keys(query).length > 0 ? query : null;
+  }
+
+  /**
+   * Documento de config del tenant. Busca por `company` + `tenantId`; si el
+   * par no coincide (dato legado), cae a `company` (única) para no devolver la
+   * empresa equivocada.
+   */
+  private async findTenantConfig(
+    tenantId?: string,
+    company?: string,
+  ): Promise<any> {
+    const query = this.tenantFilter(tenantId, company);
+    if (!query) return null;
+    let config = await this.tenantConfigModel.findOne(query).lean().exec();
+    if (!config && tenantId && company) {
+      config = await this.tenantConfigModel
+        .findOne({ company })
+        .lean()
+        .exec();
+    }
+    return config;
+  }
+
+  /**
+   * Nombre de la empresa a partir de su `tenantId` (que es `Company.id`,
+   * RUT/NIT). Permite crear/rellenar la config con "uno por empresa".
+   */
+  private async resolveCompanyName(tenantId: string): Promise<string> {
+    if (!tenantId) return '';
+    const company = await this.companyModel
+      .findOne({ $or: [{ id: tenantId }, { name: tenantId }] })
+      .lean()
+      .exec();
+    return (company as any)?.name || '';
+  }
+
+  /**
+   * Identidad canónica de una empresa a partir de su nombre o RUT/NIT.
+   * Devuelve `{ id, name }` (tenantId = `Company.id`, company = `Company.name`).
+   * Es la fuente de verdad para derivar el par multitenant.
+   */
+  async resolveCompanyIdentity(
+    identifier: string,
+  ): Promise<{ id: string; name: string } | null> {
+    const value = String(identifier || '').trim();
+    if (!value) return null;
+    const company = await this.companyModel
+      .findOne({
+        $or: [{ id: value }, { name: value }],
+        isActive: true,
+      })
+      .select('id name -_id')
+      .lean()
+      .exec();
+    if (!company) return null;
+    const id = String((company as any).id || '');
+    const name = String((company as any).name || '');
+    if (!id || !name) return null;
+    return { id, name };
+  }
+
+  /** `Company.id` (RUT/NIT) a partir del nombre o id de la empresa. */
+  async resolveCompanyId(identifier: string): Promise<string> {
+    const identity = await this.resolveCompanyIdentity(identifier);
+    return identity?.id || '';
+  }
+
+  /**
+   * Rellena `company` en configs legadas (vacía/ausente) usando la empresa
+   * real por `tenantId`. Necesario para el índice único de `company` y para
+   * que la config siempre corresponda a la empresa correcta. Idempotente.
+   */
+  async backfillCompanyNames(): Promise<number> {
+    const configs = await this.tenantConfigModel
+      .find({
+        $or: [
+          { company: '' },
+          { company: { $exists: false } },
+          { company: null },
+        ],
+      })
+      .lean()
+      .exec();
+
+    let updated = 0;
+    for (const config of configs) {
+      const name = await this.resolveCompanyName((config as any).tenantId);
+      if (!name) continue;
+      try {
+        await this.tenantConfigModel
+          .updateOne({ _id: (config as any)._id }, { $set: { company: name } })
+          .exec();
+        updated += 1;
+      } catch (error: any) {
+        this.logger.warn(
+          `No se pudo rellenar company de la config ${(config as any).tenantId}: ${error?.message}`,
+        );
+      }
+    }
+    if (updated > 0) {
+      this.logger.log(`Tenant config: ${updated} company(s) rellenadas.`);
+    }
+    return updated;
+  }
+
   async resolveConfig(tenantId?: string, company?: string) {
+    // Un documento por empresa: se crea al consultarse (idempotente).
+    if (tenantId && company) {
+      await this.ensureConfig(tenantId, company).catch(() => undefined);
+    }
+
     const definitions = await this.policyDefinitionModel
       .find({ isActive: true })
       .lean()
       .exec();
 
-    // Busca por tenantId y/o company (tolerante a valores legados donde el
-    // `tenantId` del token no coincide con el del documento). Misma estrategia
-    // que `getPolicyValue`.
-    const or: any[] = [];
-    if (tenantId) or.push({ tenantId });
-    if (company) or.push({ company });
-    const config =
-      or.length > 0
-        ? await this.tenantConfigModel.findOne({ $or: or }).lean().exec()
-        : null;
+    // Se busca por `company` + `tenantId` del usuario para garantizar que se
+    // resuelve la empresa correcta.
+    const config = await this.findTenantConfig(tenantId, company);
 
     const values: Record<string, any> = {};
     for (const def of definitions) {
@@ -266,13 +383,8 @@ export class TenantConfigService {
 
   /** Crea la configuración del tenant si no existe (idempotente). */
   async ensureConfig(tenantId: string, company: string): Promise<boolean> {
-    if (!tenantId) return false;
-    const or: any[] = [{ tenantId }];
-    if (company) or.push({ company });
-    const exists = await this.tenantConfigModel
-      .findOne({ $or: or })
-      .lean()
-      .exec();
+    if (!tenantId || !company) return false;
+    const exists = await this.findTenantConfig(tenantId, company);
     if (exists) return false;
     const defs = await this.getDefinitionsMap();
     await this.tenantConfigModel.create({
@@ -299,17 +411,9 @@ export class TenantConfigService {
       .findOne({ key })
       .lean()
       .exec();
-    // Busca por tenantId y, si no hay config, cae a company. Se buscan ambas
-    // claves juntas para tolerar usuarios cuyo `tenantId` no coincide con el
-    // `_id` de la empresa (p. ej. nombre o valor legado) y evitar caer al
-    // default del catálogo.
-    const or: any[] = [];
-    if (tenantId) or.push({ tenantId });
-    if (company) or.push({ company });
-    const config =
-      or.length > 0
-        ? await this.tenantConfigModel.findOne({ $or: or }).lean().exec()
-        : null;
+    // Se busca por `company` + `tenantId` del usuario (ambos únicos) para
+    // resolver la empresa correcta.
+    const config = await this.findTenantConfig(tenantId, company);
     const value = config?.values?.[key];
     return value !== undefined ? value : def?.defaultValue;
   }
@@ -324,13 +428,7 @@ export class TenantConfigService {
     company: string | undefined,
     key: string,
   ): Promise<{ isSet: boolean; value: any }> {
-    const or: any[] = [];
-    if (tenantId) or.push({ tenantId });
-    if (company) or.push({ company });
-    const config =
-      or.length > 0
-        ? await this.tenantConfigModel.findOne({ $or: or }).lean().exec()
-        : null;
+    const config = await this.findTenantConfig(tenantId, company);
     const value = config?.values?.[key];
     return { isSet: value !== undefined, value };
   }
@@ -378,13 +476,10 @@ export class TenantConfigService {
     };
   }
 
-  async getConfigByTenant(tenantId: string) {
-    const config = await this.tenantConfigModel
-      .findOne({ tenantId })
-      .lean()
-      .exec();
+  async getConfigByTenant(tenantId: string, company?: string) {
+    const config = await this.findTenantConfig(tenantId, company);
     if (!config) {
-      return this.resolveConfig(tenantId);
+      return this.resolveConfig(tenantId, company);
     }
     return {
       message: 'Tenant config retrieved successfully',
@@ -408,9 +503,17 @@ export class TenantConfigService {
     const sanitized = await this.sanitizeValues(dto.values || {});
     const incomingKeys = Object.keys(sanitized);
 
-    const existing = await this.tenantConfigModel
-      .findOne({ tenantId: dto.tenantId })
-      .exec();
+    // Discriminación por empresa: (tenantId, company).
+    const filter: Record<string, any> = { tenantId: dto.tenantId };
+    if (dto.company) filter.company = dto.company;
+
+    let existing = await this.tenantConfigModel.findOne(filter).exec();
+    if (!existing && dto.company) {
+      // Legado: config sin `company` para el mismo tenant.
+      existing = await this.tenantConfigModel
+        .findOne({ tenantId: dto.tenantId })
+        .exec();
+    }
 
     if (existing) {
       const merged = { ...(existing.values || {}), ...sanitized };
@@ -423,11 +526,13 @@ export class TenantConfigService {
       return this.wrapConfig(existing.toObject());
     }
 
+    const company =
+      dto.company || (await this.resolveCompanyName(dto.tenantId)) || dto.tenantId;
     const merged = { ...sanitized };
     this.applyWhatsappBagRules(merged, incomingKeys);
     const created = await this.tenantConfigModel.create({
       tenantId: dto.tenantId,
-      company: dto.company ?? '',
+      company,
       isActive: dto.isActive ?? true,
       version: 1,
       values: merged,
@@ -435,13 +540,17 @@ export class TenantConfigService {
     return this.wrapConfig(created.toObject());
   }
 
-  async patchValues(tenantId: string, dto: PatchTenantConfigValuesDto) {
+  async patchValues(
+    tenantId: string,
+    dto: PatchTenantConfigValuesDto,
+    company?: string,
+  ) {
     const sanitized = await this.sanitizeValues(dto.values || {});
     const incomingKeys = Object.keys(sanitized);
 
-    const existing = await this.tenantConfigModel
-      .findOne({ tenantId })
-      .exec();
+    const filter: Record<string, any> = { tenantId };
+    if (company) filter.company = company;
+    const existing = await this.tenantConfigModel.findOne(filter).exec();
 
     if (existing) {
       const merged = { ...(existing.values || {}), ...sanitized };
@@ -459,9 +568,11 @@ export class TenantConfigService {
       ...sanitized,
     };
     this.applyWhatsappBagRules(allValues, incomingKeys);
+    const companyName =
+      company || (await this.resolveCompanyName(tenantId)) || tenantId;
     const created = await this.tenantConfigModel.create({
       tenantId,
-      company: '',
+      company: companyName,
       isActive: true,
       version: 1,
       values: allValues,
@@ -520,8 +631,12 @@ export class TenantConfigService {
   /**
    * Fija solo las claves indicadas (merge) e incrementa la versión.
    */
-  async setValues(tenantId: string, values: Record<string, any>) {
-    return this.patchValues(tenantId, { values });
+  async setValues(
+    tenantId: string,
+    values: Record<string, any>,
+    company?: string,
+  ) {
+    return this.patchValues(tenantId, { values }, company);
   }
 
   // --------------------------------------------------------------- Helpers

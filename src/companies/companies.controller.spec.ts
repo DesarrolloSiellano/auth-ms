@@ -15,6 +15,7 @@ describe('CompaniesController', () => {
     findOne: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    checkAvailability: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -95,6 +96,24 @@ describe('CompaniesController', () => {
   it('remove delega', () => {
     serviceMock.remove.mockReturnValue('del');
     expect(controller.remove('c1', superAdminReq)).toBe('del');
+  });
+
+  it('checkAvailability delega (SuperAdmin)', () => {
+    serviceMock.checkAvailability.mockReturnValue('check');
+    expect(
+      controller.checkAvailability(superAdminReq, 'EmpresaX', '900', 'c1'),
+    ).toBe('check');
+    expect(serviceMock.checkAvailability).toHaveBeenCalledWith({
+      name: 'EmpresaX',
+      id: '900',
+      excludeId: 'c1',
+    });
+  });
+
+  it('checkAvailability rechaza a no-SuperAdmin', () => {
+    expect(() =>
+      controller.checkAvailability({ user: { isSuperAdmin: false } }, 'X'),
+    ).toThrow(ForbiddenException);
   });
 
   it('msCreate delega', () => {

@@ -141,6 +141,44 @@ export class CompaniesService {
     return company;
   }
 
+  /**
+   * Verifica disponibilidad del nombre y/o RUT/NIT (ambos únicos). Acepta
+   * `excludeId` para omitir la propia compañía en edición.
+   */
+  async checkAvailability(params: {
+    name?: string;
+    id?: string;
+    excludeId?: string;
+  }) {
+    const name = params.name?.trim();
+    const rutNit = params.id?.trim();
+    const base: any = params.excludeId ? { _id: { $ne: params.excludeId } } : {};
+
+    const [nameDoc, idDoc] = await Promise.all([
+      name
+        ? this.companyModel
+            .findOne({ ...base, name })
+            .lean()
+            .exec()
+        : Promise.resolve(null),
+      rutNit
+        ? this.companyModel
+            .findOne({ ...base, id: rutNit })
+            .lean()
+            .exec()
+        : Promise.resolve(null),
+    ]);
+
+    return {
+      message: 'Company availability checked successfully',
+      data: {
+        nameExists: !!nameDoc,
+        idExists: !!idDoc,
+      },
+      meta: { totalData: 1 },
+    };
+  }
+
   async update(id: string, updateCompanyDto: UpdateCompanyDto) {
     // `name` e `id` (RUT/NIT) conforman la identidad del tenant: no son
     // editables una vez creada la compañía.

@@ -94,7 +94,8 @@ export class UserAdminService {
   private scope(requester: any, extra: Record<string, any> = {}) {
     const query: any = { deletedAt: null, ...extra };
     if (!requester?.isSuperAdmin) {
-      query.company = requester?.company;
+      if (requester?.company) query.company = requester.company;
+      if (requester?.tenantId) query.tenantId = requester.tenantId;
     }
     return query;
   }
@@ -163,7 +164,8 @@ export class UserAdminService {
   ): Promise<Record<string, any>> {
     const query: any = { deletedAt: null };
     if (!requester?.isSuperAdmin) {
-      query.company = requester?.company;
+      if (requester?.company) query.company = requester.company;
+      if (requester?.tenantId) query.tenantId = requester.tenantId;
     } else if (filters.company) {
       query.company = new RegExp(filters.company, 'i');
     }
@@ -938,7 +940,11 @@ export class UserAdminService {
     }
 
     const defs = await this.customFieldModel
-      .find({ company, isActive: true })
+      .find({
+        ...(company ? { company } : {}),
+        ...(_tenantId ? { tenantId: _tenantId } : {}),
+        isActive: true,
+      })
       .setOptions({ bypassTenant: true })
       .lean()
       .exec();
@@ -1009,6 +1015,7 @@ export class UserAdminService {
     }
     const query: any = { isActive: true };
     if (targetCompany) query.company = targetCompany;
+    if (requester?.tenantId) query.tenantId = requester.tenantId;
     const data = await this.customFieldModel
       .find(query)
       .sort({ order: 1 })

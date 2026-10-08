@@ -95,8 +95,10 @@ export class UserLimitsService {
     company: string,
     roleCode?: string,
     excludeUserId?: string,
+    tenantId?: string,
   ): Promise<number> {
     const query: any = { company, deletedAt: null, isActived: true };
+    if (tenantId) query.tenantId = tenantId;
     if (roleCode) query['roles.codeRol'] = this.normalizeCode(roleCode);
     if (excludeUserId) query._id = { $ne: excludeUserId };
     const count = await this.userModel
@@ -122,7 +124,12 @@ export class UserLimitsService {
     if (additionalUsers > 0) {
       const limit = await this.resolveUserLimit(tenantId, company);
       if (limit > 0) {
-        const current = await this.countActiveUsers(company);
+        const current = await this.countActiveUsers(
+          company,
+          undefined,
+          undefined,
+          tenantId,
+        );
         if (current + additionalUsers > limit) {
           throw new ConflictException(
             `Se alcanzó el máximo de usuarios permitido para la empresa (${limit})`,
@@ -136,7 +143,7 @@ export class UserLimitsService {
       if (demand <= 0) continue;
       const limit = await this.resolveRoleLimit(tenantId, company, code);
       if (limit <= 0) continue;
-      const current = await this.countActiveUsers(company, code);
+      const current = await this.countActiveUsers(company, code, undefined, tenantId);
       if (current + demand > limit) {
         throw new ConflictException(
           `Se alcanzó el máximo de usuarios con el rol ${this.normalizeCode(code)} para la empresa (${limit})`,

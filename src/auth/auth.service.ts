@@ -206,7 +206,10 @@ export class AuthService {
       idUser: (userDB._id as any).toString(),
       email: userDB.email,
       company: userDB.company,
-      tenantId: userDB.tenantId || userDB.company || '0000000',
+      tenantId:
+        userDB.tenantId ||
+        (await this.tenantConfigService.resolveCompanyId(userDB.company)) ||
+        userDB.company,
       isSuperAdmin: userDB.isSuperAdmin === true,
       ip: ip,
       user_agent: meta?.user_agent || '',

@@ -30,7 +30,10 @@ export function buildReportContext(user: any): ReportContext {
  */
 export function scopeOf(ctx: ReportContext): Record<string, any> {
   if (ctx.isSuperAdmin) return {};
-  return { company: ctx.company || '__sin_empresa__' };
+  return {
+    company: ctx.company || '__sin_empresa__',
+    tenantId: ctx.tenantId || '__sin_tenant__',
+  };
 }
 
 /** Aplica un rango de fechas sobre un campo (Date o string ISO). */
