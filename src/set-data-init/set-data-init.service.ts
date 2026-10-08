@@ -267,6 +267,20 @@ export class SetDataInit implements OnApplicationBootstrap {
         throw error;
       }
     }
+
+    // Asegura la configuración de políticas por empresa (un doc por empresa).
+    for (const seed of ADMIN_COMPANY) {
+      const exists = await this.companyModel
+        .findOne({ id: seed.id })
+        .lean()
+        .exec();
+      if (exists) {
+        await this.tenantConfigService.ensureConfig(
+          String(seed.id),
+          String(seed.name),
+        );
+      }
+    }
   }
 
   async createAdminUsers() {
@@ -434,6 +448,7 @@ export class SetDataInit implements OnApplicationBootstrap {
        */
       this.logger.log('Validating tenant policies catalog...');
       await this.tenantConfigService.seedDefaultCatalog();
+      await this.tenantConfigService.backfillCompanyNames();
       await this.tenantConfigService.ensureConfig(
         String(bponetCompany.id),
         String(bponetCompany.name),

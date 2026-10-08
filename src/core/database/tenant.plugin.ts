@@ -39,9 +39,12 @@ export function tenantPlugin(schema: Schema) {
           return next();
         }
 
-        // Inyectamos el filtro de compañía de forma automática.
-        if (store.companyId) {
-          (this as any).where({ company: store.companyId });
+        // Inyectamos el filtro de empresa + tenant de forma automática.
+        const filter: Record<string, string> = {};
+        if (store.companyId) filter.company = store.companyId;
+        if (store.tenantId) filter.tenantId = store.tenantId;
+        if (Object.keys(filter).length > 0) {
+          (this as any).where(filter);
         }
       }
 

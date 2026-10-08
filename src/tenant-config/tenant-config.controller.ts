@@ -151,10 +151,8 @@ export class TenantConfigController {
         req.user.company,
       );
     }
-    const finalTenant =
-      tenantId || req?.user?.tenantId || req?.user?.company || undefined;
-    const finalCompany =
-      company || req?.user?.company || req?.user?.tenantId || undefined;
+    const finalTenant = tenantId || req?.user?.tenantId || undefined;
+    const finalCompany = company || req?.user?.company || undefined;
     return this.tenantConfigService.resolveConfig(finalTenant, finalCompany);
   }
 
@@ -162,9 +160,14 @@ export class TenantConfigController {
   @ParamFormat({ param: 'tenantId', kind: 'token' })
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Obtiene la configuración de un tenant (SuperAdmin)' })
-  getConfigByTenant(@Param('tenantId') tenantId: string, @Req() req: any) {
+  @ApiQuery({ name: 'company', required: false, type: String })
+  getConfigByTenant(
+    @Param('tenantId') tenantId: string,
+    @Query('company') company: string | undefined,
+    @Req() req: any,
+  ) {
     this.assertSuperAdmin(req);
-    return this.tenantConfigService.getConfigByTenant(tenantId);
+    return this.tenantConfigService.getConfigByTenant(tenantId, company);
   }
 
   @Put('config/:tenantId')
@@ -195,13 +198,19 @@ export class TenantConfigController {
   @ParamFormat({ param: 'tenantId', kind: 'token' })
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Actualiza valores de políticas (SuperAdmin)' })
+  @ApiQuery({ name: 'company', required: false, type: String })
   async patchValues(
     @Param('tenantId') tenantId: string,
     @Body() dto: PatchTenantConfigValuesDto,
+    @Query('company') company: string | undefined,
     @Req() req: any,
   ) {
     this.assertSuperAdmin(req);
-    const result = await this.tenantConfigService.patchValues(tenantId, dto);
+    const result = await this.tenantConfigService.patchValues(
+      tenantId,
+      dto,
+      company,
+    );
     this.audit(req, 'config.patched', 'config', {
       tenantId,
       keys: Object.keys(dto?.values || {}),

@@ -101,9 +101,12 @@ describe('UsersController', () => {
         user: { isAdmin: true, isSuperAdmin: false, company: 'EmpresaA', tenantId: 'T-1' },
       });
       expect(usersServiceMock.create).toHaveBeenCalledWith(
-        expect.objectContaining({ company: 'EmpresaA', tenantId: 'T-1' }),
+        expect.objectContaining({ company: 'EmpresaA' }),
         expect.objectContaining({ isAdmin: true }),
       );
+      // El `tenantId` (RUT/NIT) se deriva de `companies` en el servicio.
+      const passed = usersServiceMock.create.mock.calls[0][0];
+      expect(passed.tenantId).toBeUndefined();
     });
 
     it('rechaza crear para otra empresa (no SuperAdmin)', () => {

@@ -263,6 +263,7 @@ export const REPORT_DEFINITIONS: ReportDefinition[] = [
         {
           isSuperAdmin: ctx.isSuperAdmin,
           company: ctx.company,
+          tenantId: ctx.tenantId,
         },
         exportAll
           ? { all: true }

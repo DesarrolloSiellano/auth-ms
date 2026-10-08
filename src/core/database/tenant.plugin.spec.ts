@@ -41,7 +41,10 @@ describe('tenantPlugin', () => {
         hook.call(query, next);
       });
 
-      expect(query.where).toHaveBeenCalledWith({ company: 'EmpresaX' });
+      expect(query.where).toHaveBeenCalledWith({
+        company: 'EmpresaX',
+        tenantId: 'T-001',
+      });
       expect(next).toHaveBeenCalled();
     });
 

@@ -13,7 +13,7 @@ export interface TenantConfig extends Document {
 export const TenantConfigSchema = new Schema(
   {
     tenantId: { type: String, required: true, unique: true, index: true },
-    company: { type: String, required: true, index: true },
+    company: { type: String, required: true, unique: true, index: true },
     isActive: { type: Boolean, default: true },
     version: { type: Number, default: 0 },
     values: { type: Schema.Types.Mixed, default: {} },
