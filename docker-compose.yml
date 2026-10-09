@@ -8,9 +8,12 @@ services:
   nest_app:
     build: .
     container_name: nest_app_auth-ms
+    restart: unless-stopped
     ports:
       - "3010:3010"
-      - "3011:3011"
+      - "0.0.0.0:3011:3011"
+    volumes:
+      - /opt/cert/apps/auth-ms:/opt/cert/apps/auth-ms:ro
     env_file:
       - .env
     networks:
