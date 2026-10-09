@@ -55,9 +55,24 @@ jobs:
 
             git pull origin ${{ secrets.MAIN_BRANCH }}
 
+            # Validar que los certificados TLS existan antes de levantar
+            for f in server.key server.crt ca.crt; do
+              test -f /opt/cert/apps/auth-ms/$f || { echo "❌ Falta /opt/cert/apps/auth-ms/$f"; exit 1; }
+            done
+
             docker compose down --volumes --remove-orphans
             docker image prune -a -f
             docker compose pull
             docker compose build --no-cache
             docker compose up -d --remove-orphans
+
+            # Verificar que el contenedor haya quedado corriendo
+            sleep 5
+            if ! docker ps --filter name=nest_app_auth-ms --filter status=running \
+                 --format '{{.Names}}' | grep -q nest_app_auth-ms; then
+              echo "❌ auth-ms no quedó corriendo. Logs:"
+              docker logs --tail=80 nest_app_auth-ms
+              exit 1
+            fi
+            echo "✅ auth-ms corriendo"
 
