@@ -339,7 +339,7 @@
   </div>
   <div class="cover-foot">
     <span>Documento de integración · Uso interno del equipo de desarrollo</span>
-    <span>Versión 1.0</span>
+    <span>Versión 1.1 · Octubre 2026</span>
   </div>
 </div>
 
@@ -402,10 +402,10 @@
     <thead><tr><th style="width:22%">Puerto</th><th style="width:20%">Protocolo</th><th>Uso</th><th style="width:26%">Credencial</th></tr></thead>
     <tbody>
       <tr><td class="mono"><b>3010</b></td><td>HTTP / HTTPS</td><td>API REST. Es la superficie pública: login, refresh, perfil, políticas, administración.</td><td class="mono">Authorization: Bearer<br>x-service-key</td></tr>
-      <tr><td class="mono"><b>3011</b></td><td>TCP (JSON)</td><td>Canal interno entre microservicios. Más eficiente para llamadas backend-a-backend frecuentes.</td><td class="mono">serviceKey (en el payload)</td></tr>
+      <tr><td class="mono"><b>3011</b></td><td>TCP (JSON)</td><td>Canal interno entre microservicios. Más eficiente para llamadas backend-a-backend frecuentes. En producción viaja cifrado con <b>TLS/mTLS</b>.</td><td class="mono">serviceKey (en el payload)<br>+ TLS/mTLS</td></tr>
     </tbody>
   </table>
-  <p class="src">Fuente: <code>auth-ms/src/main.ts:43</code> (globalPrefix <code>api</code>, puerto 3010) y <code>auth-ms/src/main.ts:139-153</code> (TCP 3011)</p>
+  <p class="src">Fuente: <code>auth-ms/src/main.ts:43</code> (globalPrefix <code>api</code>, puerto 3010) y <code>auth-ms/src/main.ts:164-199</code> (TCP 3011 con TLS opcional)</p>
 
   <h3>Cuándo usar cada vía</h3>
   <div class="chips">
@@ -450,9 +450,9 @@
       <tr><td class="mono">JWT_ACCESS_EXPIRATION</td><td class="c">No</td><td class="mono">1h</td><td>Vigencia del access token.</td></tr>
       <tr><td class="mono">JWT_REFRESH_EXPIRATION</td><td class="c">No</td><td class="mono">7d</td><td>Vigencia del refresh token.</td></tr>
       <tr><td class="mono">CORS_ORIGIN</td><td class="c">No</td><td class="mono">*</td><td>Orígenes permitidos, separados por coma.</td></tr>
-      <tr><td class="mono">TLS_ENABLED</td><td class="c">No</td><td class="mono">false</td><td>Activa TLS en el canal TCP.</td></tr>
-      <tr><td class="mono">TLS_KEY_PATH<br>TLS_CERT_PATH<br>TLS_CA_PATH</td><td class="c">No</td><td>—</td><td>Rutas a clave, certificado y CA.</td></tr>
-      <tr><td class="mono">TLS_MUTUAL</td><td class="c">No</td><td class="mono">false</td><td>mTLS: exige <code>requestCert</code> y <code>rejectUnauthorized</code>.</td></tr>
+      <tr><td class="mono">TLS_ENABLED</td><td class="c">No</td><td class="mono">false</td><td>Activa TLS en el canal TCP. <b>En producción: <code>true</code></b>.</td></tr>
+      <tr><td class="mono">TLS_KEY_PATH<br>TLS_CERT_PATH<br>TLS_CA_PATH</td><td class="c">No</td><td>—</td><td>Rutas a la clave, el certificado del servidor y la CA. Deben existir <b>dentro del contenedor</b>: auth-ms monta <code class="inl">/opt/cert/apps/auth-ms</code>.</td></tr>
+      <tr><td class="mono">TLS_MUTUAL</td><td class="c">No</td><td class="mono">false</td><td>mTLS (<code>requestCert</code> + <code>rejectUnauthorized</code>): el servidor exige certificado de cliente. <b>En producción: <code>true</code></b>.</td></tr>
       <tr><td class="mono">TENANT_CONFIG_EMBED_IN_AUTH</td><td class="c">No</td><td class="mono">true</td><td>Incluye la config del tenant en la respuesta de login/profile.</td></tr>
       <tr><td class="mono">TEST_USER_DAYS</td><td class="c">No</td><td class="mono">7</td><td>Días de prueba. <code>0</code> = sin expiración.</td></tr>
     </tbody>
@@ -467,12 +467,14 @@
 <span class="c"># Secreto compartido con auth-ms. DEBE coincidir exactamente.</span>
 <span class="k">SERVICE_API_KEY</span>=clave-secreta-compartida
 
-<span class="c"># TLS / mTLS del canal TCP (dejar en false hasta que el servidor lo active)</span>
-<span class="k">TLS_ENABLED</span>=false
-<span class="k">TLS_CA_PATH</span>=
-<span class="k">TLS_KEY_PATH</span>=
-<span class="k">TLS_CERT_PATH</span>=</pre>
-  <p class="src">Basado en <code>nuevaInfra/api-whatsapp/apps/api/.env.example</code></p>
+<span class="c"># TLS obligatorio en producción: la CA valida el certificado del servidor</span>
+<span class="k">TLS_ENABLED</span>=true
+<span class="k">TLS_CA_PATH</span>=/opt/cert/apps/api-whatsapp/ca.crt
+
+<span class="c"># mTLS: certificado de cliente emitido por la CA interna (CN = nombre de la app)</span>
+<span class="k">TLS_KEY_PATH</span>=/opt/cert/apps/api-whatsapp/api-whatsapp.key
+<span class="k">TLS_CERT_PATH</span>=/opt/cert/apps/api-whatsapp/api-whatsapp.crt</pre>
+  <p class="src">Basado en <code>nuevaInfra/api-whatsapp/.env</code> (producción con mTLS)</p>
 
   <div class="box warn">
     <span class="bt">El nombre de la variable no es estándar, es una convención del ecosistema</span>
@@ -864,15 +866,12 @@ curl <span class="s">"https://app.bponet.com.co/auth/api/tenants/config?tenantId
 curl <span class="s">"https://app.bponet.com.co/auth/api/users/profile"</span> \
   -H <span class="s">"Authorization: Bearer $ACCESS_TOKEN"</span></pre>
 
-  <div class="box warn">
-    <span class="bt">Limitación conocida de CORS: <code>x-service-key</code> no está en la lista de headers permitidos</span>
-    En <code>main.ts</code> la configuración de CORS declara
-    <code>allowedHeaders: ['Content-Type', 'Authorization', 'x-idempotency-key']</code>.
-    Eso significa que una llamada <b>desde el navegador</b> (fetch/XHR) con
-    <code class="inl">x-service-key</code> será <b>rechazada en el preflight</b>. No afecta a
-    las llamadas desde backend ni al canal TCP. Si necesitas <code>x-service-key</code> desde el
-    frontend, hay que añadirlo a <code>allowedHeaders</code> en auth-ms.
-    <p class="src" style="margin:2mm 0 0">Origen: <code>auth-ms/src/main.ts:54-59</code></p>
+  <div class="box info">
+    <span class="bt">CORS: los headers de servicio están permitidos</span>
+    <code>main.ts</code> declara <code>allowedHeaders: ['Content-Type', 'Authorization', 'x-idempotency-key', 'x-request-id', 'x-service-key', 'x-company-id', 'x-tenant-id', 'x-user-id']</code>,
+    por lo que una llamada desde el navegador con <code class="inl">x-service-key</code> ya pasa el preflight.
+    Aun así, la clave de servicio es un <b>secreto de backend</b>: no la expongas en frontends.
+    <p class="src" style="margin:2mm 0 0">Origen: <code>auth-ms/src/main.ts:91-100</code></p>
   </div>
 </div>
 
@@ -969,7 +968,13 @@ curl <span class="s">"https://app.bponet.com.co/auth/api/users/profile"</span> \
     Solo necesitas importarlo una vez en tu <code class="inl">AppModule</code>.
   </div>
 
-  <h3>5.2 Configuración TLS en el servidor</h3>
+  <h3>5.2 TLS/mTLS del canal TCP (producción)</h3>
+  <p>
+    En producción el canal TCP viaja <b>cifrado con TLS</b> y, además, el servidor exige el
+    <b>certificado de cliente</b> (mTLS). El servidor arma los <code class="inl">tlsOptions</code>
+    y los pasa a Nest en la opción TCP (la clave correcta es <code class="inl">tlsOptions</code>,
+    no <code class="inl">tls</code>):
+  </p>
   <pre><span class="k">const</span> tlsEnabled = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_ENABLED'</span>, <span class="s">'false'</span>) === <span class="s">'true'</span>;
 <span class="k">const</span> tlsMutual  = configService.get&lt;<span class="k">string</span>&gt;(<span class="s">'TLS_MUTUAL'</span>,  <span class="s">'false'</span>) === <span class="s">'true'</span>;
 
@@ -990,19 +995,67 @@ curl <span class="s">"https://app.bponet.com.co/auth/api/users/profile"</span> \
     <span class="f">requestCert</span>: tlsMutual,
     <span class="f">rejectUnauthorized</span>: tlsMutual,
   };
-}</pre>
-  <p class="src">Origen: <code>auth-ms/src/main.ts:115-137</code></p>
+}
+
+app.<span class="f">connectMicroservice</span>&lt;MicroserviceOptions&gt;(
+  {
+    <span class="f">transport</span>: Transport.TCP,
+    <span class="f">options</span>: {
+      <span class="f">host</span>: configService.get(<span class="s">'MICROSERVICE_HOST'</span>, <span class="s">'0.0.0.0'</span>),
+      <span class="f">port</span>: configService.get(<span class="s">'MICROSERVICE_PORT'</span>, <span class="k">3011</span>),
+      ...(tlsOptions ? { <span class="f">tlsOptions</span> } : {}),
+    },
+  },
+  { <span class="f">inheritAppConfig</span>: <span class="k">true</span> },
+);</pre>
+  <p class="src">Origen: <code>auth-ms/src/main.ts:164-199</code></p>
 
   <div class="two-col">
     <div class="box ok" style="margin-top:0">
       <span class="bt">TLS simple</span>
-      <code class="inl">TLS_ENABLED=true</code> + key y cert. Cifra el canal, pero cualquier servicio con la clave puede conectarse.
+      <code class="inl">TLS_ENABLED=true</code> + key y cert. Cifra el canal, pero cualquier servicio con la clave compartida puede conectarse.
     </div>
     <div class="box info" style="margin-top:0">
-      <span class="bt">mTLS</span>
-      Añade <code class="inl">TLS_MUTUAL=true</code> y el <code class="inl">TLS_CA_PATH</code>. El servidor exige certificado de cliente.
+      <span class="bt">mTLS (producción)</span>
+      <code class="inl">TLS_MUTUAL=true</code> + <code class="inl">TLS_CA_PATH</code>. El servidor exige un certificado de cliente emitido por la CA interna.
     </div>
   </div>
+
+  <h3>5.2.1 Certificados (CA interna)</h3>
+  <p>
+    El tráfico servicio-a-servicio usa una <b>CA interna</b>. El certificado del servidor incluye los
+    SAN de sus nombres de acceso y <b>cada aplicación recibe su propio certificado de cliente</b>
+    (<code class="inl">CN = nombre-de-la-app</code>, <code class="inl">extendedKeyUsage=clientAuth</code>).
+  </p>
+  <pre>/opt/cert/apps/
+├── ca/
+│   └── ca.crt                    <span class="c"># se copia a servidor y clientes · ca.key NO se distribuye</span>
+├── auth-ms/
+│   ├── server.key                <span class="c"># 600</span>
+│   ├── server.crt                <span class="c"># SAN: DNS:app.bponet.com.co, DNS:localhost, IP:127.0.0.1</span>
+│   └── ca.crt
+└── api-whatsapp/
+    ├── api-whatsapp.key          <span class="c"># 600 · CN=api-whatsapp (clientAuth)</span>
+    ├── api-whatsapp.crt
+    └── ca.crt</pre>
+  <div class="box warn">
+    <span class="bt">El contenedor de auth-ms debe montar los certificados del host</span>
+    El <code class="inl">docker-compose.yml</code> monta
+    <code class="inl">/opt/cert/apps/auth-ms:/opt/cert/apps/auth-ms:ro</code>, por eso el
+    <code class="inl">.env</code> usa las mismas rutas del host
+    (<code class="inl">TLS_KEY_PATH=/opt/cert/apps/auth-ms/server.key</code>, etc.). Si el contenedor
+    no ve el archivo, el arranque falla con <code class="inl">ENOENT ... server.key</code> y el
+    servicio REST también queda caído.
+  </div>
+
+  <h3>5.2.2 Verificar el handshake</h3>
+  <pre><span class="c"># Desde el servidor de la aplicación, con su certificado de cliente (mTLS)</span>
+openssl s_client -connect app.bponet.com.co:3011 \
+  -CAfile /opt/cert/apps/api-whatsapp/ca.crt \
+  -cert   /opt/cert/apps/api-whatsapp/api-whatsapp.crt \
+  -key    /opt/cert/apps/api-whatsapp/api-whatsapp.key -brief
+
+<span class="c"># Esperado: "Verify return code: 0 (ok)". Sin certificado de cliente el handshake debe fallar.</span></pre>
 
   <h3>5.3 La regla de oro: <code>serviceKey</code> siempre</h3>
   <div class="box error">
@@ -1055,7 +1108,7 @@ curl <span class="s">"https://app.bponet.com.co/auth/api/users/profile"</span> \
   </div>
 
   <h3>5.5 Catálogo completo de comandos TCP</h3>
-  <p>Los 45 comandos disponibles, agrupados por dominio. <b>Todos requieren <code class="inl">serviceKey</code>.</b></p>
+  <p>Los 44 comandos disponibles, agrupados por dominio. <b>Todos requieren <code class="inl">serviceKey</code> y, en producción, conexión TLS con certificado de cliente.</b></p>
   <p><b>Revocación de sesiones y estrategia global:</b> valida el JWT <b>localmente</b> (firma/iss/aud/exp) y usa <code class="inl">validateSession</code> (ligero, sin lookup de usuario) para la revocación, con <b>caché corta (~15s)</b> por <code class="inl">sid</code>. <code class="inl">validateUser</code> solo en login/bootstrap. Si <code class="inl">data.active === false</code> (o el guard devuelve 401) cierra sesión; ante 429 aplica backoff. Las respuestas TCP van envueltas: el dato está en <code class="inl">data</code>. Ver <code class="inl">plans/ESTRATEGIA_VALIDACION_AUTH.md</code>.</p>
 
   <h4>Dominio auth — <code>auth-ms/src/auth/auth.controller.ts:343-371</code></h4>
@@ -1140,33 +1193,47 @@ curl <span class="s">"https://app.bponet.com.co/auth/api/users/profile"</span> \
     </tbody>
   </table>
 
-  <h4>Dominio tenant-config — <code>auth-ms/src/tenant-config/tenant-config.controller.ts:262-311</code></h4>
+  <h4>Dominio tenant-config — <code>auth-ms/src/tenant-config/tenant-config.controller.ts:229-276</code></h4>
   <table>
     <thead><tr><th style="width:26%">cmd</th><th style="width:40%">Payload</th><th>Retorna</th></tr></thead>
     <tbody>
       <tr><td class="mono">getTenantConfig</td><td class="mono">{ serviceKey, tenantId?, company? }</td><td>Config resuelta (defaults + valores del tenant)</td></tr>
+      <tr><td class="mono">resolveCompanyPair</td><td class="mono">{ serviceKey, company?, tenantId? }</td><td><code>{ valid, company, tenantId }</code>: valida el par canónico de una empresa activa</td></tr>
       <tr><td class="mono">getTenantPolicyCatalog</td><td class="mono">{ serviceKey }</td><td>Catálogo de definiciones de políticas</td></tr>
-      <tr><td class="mono">reportTenantUsage</td><td class="mono">{ serviceKey, tenantId, period, metrics, reportId }</td><td>Consumo acumulado (idempotente por reportId)</td></tr>
-      <tr><td class="mono">getTenantUsage</td><td class="mono">{ serviceKey, tenantId, period? }</td><td>Consumo del período</td></tr>
       <tr><td class="mono">setTenantConfig</td><td class="mono">{ serviceKey, tenantId, company?, isActive?, values? }</td><td>Config actualizada (SuperAdmin)</td></tr>
       <tr><td class="mono">upsertPolicyDefinition</td><td class="mono">{ serviceKey, definition }</td><td>Definición creada o editada (SuperAdmin)</td></tr>
     </tbody>
   </table>
 
   <h3>5.6 Script de prueba en Node puro (sin NestJS)</h3>
-  <p>Para verificar la conectividad y la clave antes de integrar en tu backend:</p>
-  <pre><span class="c">// test-tcp.js  →  node test-tcp.js</span>
-<span class="k">const</span> net = <span class="f">require</span>(<span class="s">'net'</span>);
+  <p>Para verificar la conectividad, el handshake TLS y la clave antes de integrar en tu backend:</p>
+  <pre><span class="c">// test-tcp.js  →  node test-tcp.js   (requiere las variables TLS_* del .env)</span>
+<span class="k">const</span> tls = <span class="f">require</span>(<span class="s">'tls'</span>);
+<span class="k">const</span> fs  = <span class="f">require</span>(<span class="s">'fs'</span>);
+
+<span class="k">const</span> options = {
+  <span class="f">host</span>: process.env.USER_MS_HOST || <span class="s">'app.bponet.com.co'</span>,
+  <span class="f">port</span>: <span class="k">Number</span>(process.env.USER_MS_PORT || <span class="k">3011</span>),
+};
+
+<span class="c">// TLS + mTLS (en producción siempre activo)</span>
+<span class="k">if</span> (process.env.TLS_ENABLED === <span class="s">'true'</span>) {
+  options.ca = fs.<span class="f">readFileSync</span>(process.env.TLS_CA_PATH);
+  <span class="k">if</span> (process.env.TLS_KEY_PATH &amp;&amp; process.env.TLS_CERT_PATH) {
+    options.key  = fs.<span class="f">readFileSync</span>(process.env.TLS_KEY_PATH);
+    options.cert = fs.<span class="f">readFileSync</span>(process.env.TLS_CERT_PATH);
+  }
+}
 
 <span class="k">const</span> payload = JSON.stringify({
   <span class="f">pattern</span>: { <span class="f">cmd</span>: <span class="s">'getTenantPolicyCatalog'</span> },
   <span class="f">data</span>: { <span class="f">serviceKey</span>: process.env.SERVICE_API_KEY },
 });
 
-<span class="k">const</span> client = net.<span class="f">connect</span>(
-  { <span class="f">host</span>: process.env.USER_MS_HOST || <span class="s">'127.0.0.1'</span>, <span class="f">port</span>: <span class="k">Number</span>(process.env.USER_MS_PORT || <span class="k">3011</span>) },
-  () =&gt; { console.<span class="f">log</span>(<span class="s">'conectado, enviando…'</span>); client.<span class="f">write</span>(payload + <span class="s">'\n'</span>); },
-);
+<span class="k">const</span> client = tls.<span class="f">connect</span>(options, () =&gt; {
+  console.<span class="f">log</span>(<span class="s">'conectado (TLS), enviando…'</span>);
+  client.<span class="f">write</span>(payload + <span class="s">'\n'</span>);
+});
 
 client.<span class="f">on</span>(<span class="s">'data'</span>, (d) =&gt; console.<span class="f">log</span>(<span class="s">'respuesta:'</span>, d.toString()));
 client.<span class="f">on</span>(<span class="s">'error'</span>,  (e) =&gt; console.<span class="f">error</span>(<span class="s">'error:'</span>, e.message));
@@ -1386,7 +1453,7 @@ client.<span class="f">on</span>(<span class="s">'close'</span>, () =&gt; client
         <td class="c"><b>4</b></td>
         <td><b>Configurar las variables del cliente</b></td>
         <td>Tu equipo</td>
-        <td><code class="inl">USER_MS_HOST</code>, <code class="inl">USER_MS_PORT</code>, <code class="inl">SERVICE_API_KEY</code> y, si aplica, <code class="inl">TLS_*</code>.</td>
+        <td><code class="inl">USER_MS_HOST</code>, <code class="inl">USER_MS_PORT</code>, <code class="inl">SERVICE_API_KEY</code> y los <code class="inl">TLS_*</code> (<code>TLS_ENABLED=true</code>, <code>ca.crt</code> y certificado de cliente). Ver 5.2.</td>
       </tr>
       <tr>
         <td class="c"><b>5</b></td>
@@ -1426,6 +1493,14 @@ client.<span class="f">on</span>(<span class="s">'close'</span>, () =&gt; client
       </tr>
     </tbody>
   </table>
+
+  <div class="box warn">
+    <span class="bt">TLS/mTLS es obligatorio en producción</span>
+    El canal TCP exige TLS y certificado de cliente. Solicita al equipo de auth-ms un certificado
+    emitido por la CA interna con <code class="inl">CN = nombre-de-tu-app</code> y configura los
+    <code class="inl">TLS_*</code>. Sin él, el handshake falla y <b>no verás un 401</b>: la conexión
+    TCP no se establece.
+  </div>
 
   <div class="box error">
     <span class="bt">Los dos errores más comunes al integrar por primera vez</span>
@@ -1518,6 +1593,26 @@ node test-tcp.js</pre>
         <td><b>429</b> Too Many Requests</td>
         <td>Throttling global: 10 req/min por defecto; el login es más estricto (5/min).</td>
         <td>Aplicar <i>backoff</i>. Mostrar un mensaje al usuario en vez de reintentar en bucle.</td>
+      </tr>
+      <tr>
+        <td>Handshake TLS falla: <code>UNABLE_TO_VERIFY_LEAF_SIGNATURE</code> / <code>SELF_SIGNED_CERT_IN_CHAIN</code></td>
+        <td>El cliente no está pasando el <code class="inl">ca.crt</code> de la CA interna.</td>
+        <td>Configurar <code class="inl">TLS_CA_PATH</code> con el <code class="inl">ca.crt</code> correcto y reiniciar el proceso.</td>
+      </tr>
+      <tr>
+        <td>Handshake TLS falla: <code>ERR_TLS_CERT_ALTNAME_INVALID</code></td>
+        <td>El nombre usado para conectar no está en el SAN del certificado del servidor (p. ej. conectar por IP).</td>
+        <td>Conectar por <code class="inl">app.bponet.com.co</code> o solicitar un certificado con el SAN correspondiente.</td>
+      </tr>
+      <tr>
+        <td>La conexión TCP se resetea al instante, sin respuesta de la app</td>
+        <td>mTLS activo y el cliente no presenta certificado (o no es válido).</td>
+        <td>Configurar <code class="inl">TLS_KEY_PATH</code> y <code class="inl">TLS_CERT_PATH</code> con el certificado de cliente emitido por la CA interna.</td>
+      </tr>
+      <tr>
+        <td>auth-ms en <code>Exited (1)</code> con <code>ENOENT ... server.key</code></td>
+        <td>Los certificados no están montados/visibles dentro del contenedor, o las rutas del <code class="inl">.env</code> no coinciden con el mount.</td>
+        <td>Montar <code class="inl">/opt/cert/apps/auth-ms:/opt/cert/apps/auth-ms:ro</code> y usar esas mismas rutas en <code class="inl">TLS_*</code> (ver 5.2.1).</td>
       </tr>
     </tbody>
   </table>

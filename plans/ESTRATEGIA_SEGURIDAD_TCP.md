@@ -26,7 +26,7 @@
 | Fase | Capa | Qué resuelve | Estado |
 |------|------|--------------|--------|
 | F1 | Autenticación de servicio (secreto compartido) | "¿Quién tiene derecho a llamarme?" en el canal TCP (y REST opt-in) | Implementada |
-| F2 | Cifrado del canal TCP (TLS / mTLS) | "¿El tráfico es legible/interceptable?" | Implementada (configurable) |
+| F2 | Cifrado del canal TCP (TLS / mTLS) | "¿El tráfico es legible/interceptable?" | Activa en producción (CA interna + mTLS) |
 | F3 | Canal REST reforzado (JWT **o** clave de servicio) | "¿Los servicios pueden consumir REST sin impersonar usuarios?" | Implementada (opt-in por ruta) |
 | F4 | Higiene de red / firewall | Exposición del puerto y topología | Pendiente (operaciones) |
 
@@ -67,10 +67,16 @@
 | `TLS_CA_PATH` | Ruta a la CA (requerida para mTLS) | — |
 | `TLS_MUTUAL` | Activa **mTLS** (`requestCert` + `rejectUnauthorized`) | `false` |
 
-- Configuración en `main.ts` (`app.connectMicroservice`), pasando `options.tls`.
-- **Producción recomendada:** `TLS_ENABLED=true` y, si es viable, `TLS_MUTUAL=true` (cifrado + autenticación mutua).
-- **Clientes:** deben configurar `tls` en su `ClientProxy` (`ca` del servidor y, en mTLS, su propio `cert`/`key`).
-- **Nota:** TLS de una vía autentica al servidor; **mTLS autentica ambas partes**. Si no se puede usar mTLS, al menos TLS + `SERVICE_API_KEY` (F1).
+- Configuración en `main.ts` (`app.connectMicroservice`), pasando la opción **`tlsOptions`** (la clave `tls` era ignorada por Nest; corregido).
+- **Estado en producción:** `TLS_ENABLED=true` y `TLS_MUTUAL=true`; los defaults del schema siguen en `false` para desarrollo.
+- **Clientes:** configuran `tlsOptions` en su `ClientProxy` (`ca` de la CA interna y, en mTLS, su propio `cert`/`key`). api-whatsapp ya lo implementa.
+- **Certificados (CA interna):** el servidor y cada cliente tienen su propio par emitido por una CA privada; el servidor valida el cert de cliente contra `TLS_CA_PATH`. Layout acordado:
+  - `/opt/cert/apps/auth-ms/{server.key,server.crt,ca.crt}` (SAN: `app.bponet.com.co`, `localhost`, `127.0.0.1`)
+  - `/opt/cert/apps/<app>/{<app>.key,<app>.crt,ca.crt}` (CN = nombre de la app, `clientAuth`)
+  - `ca.key` no se distribuye a los servidores de aplicaciones; claves en `600`.
+- **Docker:** el contenedor de auth-ms monta `/opt/cert/apps/auth-ms:/opt/cert/apps/auth-ms:ro`, por lo que el `.env` usa las mismas rutas del host; si el archivo no es visible, el arranque falla (`ENOENT`) y también cae el REST.
+- **Verificación:** `openssl s_client -connect app.bponet.com.co:3011 -CAfile ca.crt -cert <app>.crt -key <app>.key -brief` → `Verify return code: 0 (ok)`; sin cert de cliente el handshake debe fallar.
+- **Nota:** TLS de una vía autentica al servidor; **mTLS autentica ambas partes**. El `SERVICE_API_KEY` (F1) se mantiene siempre como autenticación de aplicación.
 
 ### Rate limiting del canal TCP
 
