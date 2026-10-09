@@ -42,6 +42,16 @@ jobs:
             docker compose build --no-cache
             docker compose up -d --remove-orphans
 
+            # Verificar que el contenedor haya quedado corriendo
+            sleep 5
+            if ! docker ps --filter name=nest_app_auth-ms --filter status=running \
+                 --format '{{.Names}}' | grep -q nest_app_auth-ms; then
+              echo "❌ auth-ms no quedó corriendo. Logs:"
+              docker logs --tail=80 nest_app_auth-ms
+              exit 1
+            fi
+            echo "✅ auth-ms corriendo"
+
             # 3. Volver a dejar apuntado el HEAD a la rama principal (para que los siguientes deploys funcionen sin problemas)
             git checkout ${{ secrets.MAIN_BRANCH }}
 

@@ -12,6 +12,6 @@ COPY . .
 
 RUN npm run build
 
-EXPOSE 3010
+EXPOSE 3010 3011
 
 CMD ["node", "dist/main"]
