@@ -104,9 +104,9 @@ describe('CompaniesService', () => {
       expect(result.message).toContain('No search word');
     });
 
-    it('busca por palabra limitando a 10', async () => {
+    it('busca todas las coincidencias por palabra', async () => {
       mockModel.find.mockReturnValue({
-        limit: jest.fn().mockReturnValue({ sort: jest.fn().mockReturnValue(leanExec([{ name: 'a' }])) }),
+        sort: jest.fn().mockReturnValue(leanExec([{ name: 'a' }])),
       });
 
       const result = await service.findByAutoComplete('a');

@@ -119,8 +119,7 @@ export class CompaniesService {
           { web: regex },
         ],
       })
-      .limit(10) // Limitar cantidad para autocompletado
-      .sort({ _id: -1 }) // Similar al ejemplo orden descendente
+      .sort({ name: 1 })
       .lean()
       .exec();
 

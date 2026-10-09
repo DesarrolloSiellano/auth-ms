@@ -17,7 +17,7 @@ describe('buildIdentityPayload', () => {
       tenantId: '000000',
       modules: [{ name: 'adminUserModule', routes: [] }],
       roles: [{ name: 'Administrador', codeRol: 'ADM' }],
-      permissions: [{ name: 'create' }],
+      permissions: [{ resource: 'tickets', action: 'create' }],
     };
 
     const payload = buildIdentityPayload(user);
@@ -34,7 +34,7 @@ describe('buildIdentityPayload', () => {
       isSuperAdmin: false,
       isAdmin: true,
       roles: ['ADM'],
-      permissions: ['create'],
+      permissions: ['tickets:create'],
       isTrial: false,
       trialStartedAt: null,
       trialEndsAt: null,
