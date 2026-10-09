@@ -188,6 +188,53 @@ describe('TenantConfigService', () => {
     expect(result.data.version).toBe(0);
   });
 
+  describe('resolveCompanyPair', () => {
+    const companyChain = (value: any) => ({
+      select: () => ({
+        lean: () => ({ exec: () => Promise.resolve(value) }),
+      }),
+    });
+
+    it('valida que company y tenantId sean de la misma empresa activa', async () => {
+      companyModel.findOne.mockReturnValue(
+        companyChain({ id: 'T-1', name: 'EmpresaA' }),
+      );
+
+      await expect(
+        service.resolveCompanyPair('EmpresaA', 'T-1'),
+      ).resolves.toEqual({ id: 'T-1', name: 'EmpresaA' });
+      expect(companyModel.findOne).toHaveBeenCalledWith({
+        name: 'EmpresaA',
+        id: 'T-1',
+        isActive: true,
+      });
+    });
+
+    it('devuelve null si el par no corresponde', async () => {
+      companyModel.findOne.mockReturnValue(companyChain(null));
+
+      await expect(
+        service.resolveCompanyPair('EmpresaA', 'T-OTRO'),
+      ).resolves.toBeNull();
+    });
+
+    it('completa el par a partir de un solo identificador', async () => {
+      companyModel.findOne.mockReturnValue(
+        companyChain({ id: 'T-1', name: 'EmpresaA' }),
+      );
+
+      await expect(service.resolveCompanyPair('EmpresaA')).resolves.toEqual({
+        id: 'T-1',
+        name: 'EmpresaA',
+      });
+    });
+
+    it('devuelve null sin identificadores', async () => {
+      await expect(service.resolveCompanyPair()).resolves.toBeNull();
+      expect(companyModel.findOne).not.toHaveBeenCalled();
+    });
+  });
+
   it('upsertConfig crea la config validando valores', async () => {
     tenantConfigModel.findOne.mockReturnValue({ exec: () => Promise.resolve(null) });
     tenantConfigModel.create.mockImplementation((data: any) => ({

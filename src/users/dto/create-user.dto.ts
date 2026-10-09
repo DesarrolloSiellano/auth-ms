@@ -133,11 +133,19 @@ export class CreateUserDto {
 
   @ApiPropertyOptional({
     example: 'EmpresaX',
-    description: 'Nombre de la empresa del usuario',
+    description: 'Nombre de la empresa del usuario (Company.name)',
   })
   @IsOptional()
   @IsString()
   company?: string;
+
+  @ApiPropertyOptional({
+    example: '900123456',
+    description: 'Identificador de la empresa (Company.id, RUT/NIT)',
+  })
+  @IsOptional()
+  @IsString()
+  tenantId?: string;
 
   @ApiPropertyOptional({
     example: 'reset-token-abc123',

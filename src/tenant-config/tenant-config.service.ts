@@ -244,9 +244,8 @@ export class TenantConfigService {
   }
 
   /**
-   * Documento de config del tenant. Busca por `company` + `tenantId`; si el
-   * par no coincide (dato legado), cae a `company` (única) para no devolver la
-   * empresa equivocada.
+   * Documento de config del tenant. La identidad es el par
+   * `tenantId` + `company`: se busca por ambos cuando están disponibles.
    */
   private async findTenantConfig(
     tenantId?: string,
@@ -254,14 +253,7 @@ export class TenantConfigService {
   ): Promise<any> {
     const query = this.tenantFilter(tenantId, company);
     if (!query) return null;
-    let config = await this.tenantConfigModel.findOne(query).lean().exec();
-    if (!config && tenantId && company) {
-      config = await this.tenantConfigModel
-        .findOne({ company })
-        .lean()
-        .exec();
-    }
-    return config;
+    return this.tenantConfigModel.findOne(query).lean().exec();
   }
 
   /**
@@ -306,6 +298,37 @@ export class TenantConfigService {
   async resolveCompanyId(identifier: string): Promise<string> {
     const identity = await this.resolveCompanyIdentity(identifier);
     return identity?.id || '';
+  }
+
+  /**
+   * Resuelve y valida el par canónico de una empresa
+   * (`company = Company.name`, `tenantId = Company.id`).
+   *
+   * - Con ambos: deben corresponder a la MISMA empresa activa.
+   * - Con uno: se resuelve la empresa y se completa el otro.
+   *
+   * Devuelve `null` si no existe una empresa activa que cumpla.
+   */
+  async resolveCompanyPair(
+    company?: string,
+    tenantId?: string,
+  ): Promise<{ id: string; name: string } | null> {
+    const name = String(company || '').trim();
+    const id = String(tenantId || '').trim();
+
+    if (name && id) {
+      const match = await this.companyModel
+        .findOne({ name, id, isActive: true })
+        .select('id name -_id')
+        .lean()
+        .exec();
+      if (!match) return null;
+      return { id: String((match as any).id), name: String((match as any).name) };
+    }
+
+    const identifier = name || id;
+    if (!identifier) return null;
+    return this.resolveCompanyIdentity(identifier);
   }
 
   /**
@@ -507,13 +530,7 @@ export class TenantConfigService {
     const filter: Record<string, any> = { tenantId: dto.tenantId };
     if (dto.company) filter.company = dto.company;
 
-    let existing = await this.tenantConfigModel.findOne(filter).exec();
-    if (!existing && dto.company) {
-      // Legado: config sin `company` para el mismo tenant.
-      existing = await this.tenantConfigModel
-        .findOne({ tenantId: dto.tenantId })
-        .exec();
-    }
+    const existing = await this.tenantConfigModel.findOne(filter).exec();
 
     if (existing) {
       const merged = { ...(existing.values || {}), ...sanitized };

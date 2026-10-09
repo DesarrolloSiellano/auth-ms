@@ -75,6 +75,7 @@ describe('create-superadmin', () => {
         isAdmin: true,
         isNewUser: true,
         company: 'BPONET',
+        tenantId: '901620548-2',
       }),
     );
     expect(mongoose.disconnect).toHaveBeenCalled();

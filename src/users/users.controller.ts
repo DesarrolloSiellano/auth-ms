@@ -11,6 +11,7 @@ import {
   Req,
   UnauthorizedException,
   ForbiddenException,
+  BadRequestException,
   Optional,
   Patch,
   Res,
@@ -80,16 +81,27 @@ export class UsersController {
         'Solo un SuperAdmin puede crear usuarios SuperAdmin',
       );
     }
-    // Aislamiento multi-tenant: un usuario de empresa solo crea en SU empresa.
-    if (!user.isSuperAdmin) {
-      if (createUserDto.company && createUserDto.company !== user.company) {
+    if (user.isSuperAdmin) {
+      // El SuperAdmin debe elegir explícitamente la empresa destino
+      // (par company + tenantId). Nunca se usan sus propios datos.
+      if (!createUserDto.company || !createUserDto.tenantId) {
+        throw new BadRequestException(
+          'La empresa y el tenantId son obligatorios',
+        );
+      }
+    } else {
+      // Aislamiento multi-tenant: un usuario de empresa solo crea en SU
+      // empresa. Cualquier par distinto al suyo se rechaza.
+      if (
+        (createUserDto.company && createUserDto.company !== user.company) ||
+        (createUserDto.tenantId && createUserDto.tenantId !== user.tenantId)
+      ) {
         throw new ForbiddenException(
           'No puedes crear usuarios para otra empresa',
         );
       }
       createUserDto.company = user.company;
-      // El `tenantId` (RUT/NIT) se deriva de `companies` por el nombre.
-      delete (createUserDto as any).tenantId;
+      createUserDto.tenantId = user.tenantId;
     }
     // El enlace del correo usa el origen real del front que origina la petición.
     const origin = resolveRequestOrigin(req);

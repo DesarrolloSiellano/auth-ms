@@ -4,7 +4,11 @@ import { UserLimitsService } from './user-limits.service';
 import { ConfigService } from '@nestjs/config';
 import { MailService } from 'src/mail/mail.service';
 import { getModelToken } from '@nestjs/mongoose';
-import { NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { TenantConfigService } from 'src/tenant-config/tenant-config.service';
 import { FeaturePolicyService } from 'src/core/services/feature-policy.service';
 
@@ -73,6 +77,20 @@ describe('UsersService', () => {
         .mockImplementation((name: string) =>
           Promise.resolve({ id: `tenant-${name}`, name }),
         ),
+      resolveCompanyPair: jest
+        .fn()
+        .mockImplementation((company?: string, tenantId?: string) => {
+          const name = String(company || '').trim();
+          const id = String(tenantId || '').trim();
+          if (name && id) {
+            return Promise.resolve(
+              id === `tenant-${name}` ? { id, name } : null,
+            );
+          }
+          const identifier = name || id;
+          if (!identifier) return Promise.resolve(null);
+          return Promise.resolve({ id: `tenant-${identifier}`, name: identifier });
+        }),
       resolveCompanyId: jest.fn().mockResolvedValue('tenant-1'),
     };
     featurePolicyMock = {
@@ -137,13 +155,96 @@ describe('UsersService', () => {
           permissions: [{ name: 'p' }],
           modules: [{ name: 'm' }],
         } as any,
-        { isAdmin: true, isSuperAdmin: false },
+        {
+          isAdmin: true,
+          isSuperAdmin: false,
+          company: 'EmpresaX',
+          tenantId: 'tenant-EmpresaX',
+        },
       );
 
       const created =
         mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
       expect(created.permissions).toBeUndefined();
       expect(created.modules).toBeUndefined();
+    });
+
+    it('SuperAdmin exige company + tenantId explícitos (nunca los suyos)', async () => {
+      await expect(
+        service.create(
+          {
+            name: 'Juan',
+            lastName: 'Pérez',
+            email: 'super@mail.com',
+            company: 'EmpresaX',
+          } as any,
+          {
+            isSuperAdmin: true,
+            company: 'BPONET',
+            tenantId: 'tenant-BPONET',
+          },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('SuperAdmin persiste el par elegido, no el suyo', async () => {
+      await service.create(
+        {
+          name: 'Juan',
+          lastName: 'Pérez',
+          email: 'super2@mail.com',
+          company: 'EmpresaDestino',
+          tenantId: 'tenant-EmpresaDestino',
+        } as any,
+        {
+          isSuperAdmin: true,
+          company: 'BPONET',
+          tenantId: 'tenant-BPONET',
+        },
+      );
+
+      const created =
+        mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
+      expect(created.company).toBe('EmpresaDestino');
+      expect(created.tenantId).toBe('tenant-EmpresaDestino');
+    });
+
+    it('Admin fuerza el par de su propia empresa', async () => {
+      await service.create(
+        {
+          name: 'Juan',
+          lastName: 'Pérez',
+          email: 'admin2@mail.com',
+          company: 'EmpresaB',
+          tenantId: 'tenant-EmpresaB',
+        } as any,
+        {
+          isAdmin: true,
+          isSuperAdmin: false,
+          company: 'EmpresaA',
+          tenantId: 'tenant-EmpresaA',
+        },
+      );
+
+      const created =
+        mockUserModel.mock.calls[mockUserModel.mock.calls.length - 1][0];
+      expect(created.company).toBe('EmpresaA');
+      expect(created.tenantId).toBe('tenant-EmpresaA');
+    });
+
+    it('rechaza un par company/tenantId que no corresponde', async () => {
+      await expect(
+        service.create(
+          {
+            name: 'Juan',
+            lastName: 'Pérez',
+            email: 'pair@mail.com',
+            company: 'EmpresaA',
+            tenantId: 'tenant-Otra',
+          } as any,
+          { isSuperAdmin: true },
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('normaliza email y username a minúsculas', async () => {

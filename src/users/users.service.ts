@@ -55,29 +55,48 @@ export class UsersService {
     const username = this.normalizeUsername(createUserDto.username);
 
     const store = tenantLocalStorage.getStore();
-    const companyInput = createUserDto.company || store?.companyId;
+    const requesterIsSuperAdmin = requester?.isSuperAdmin === true;
 
     // Identidad canónica de la empresa: `company = Company.name`,
     // `tenantId = Company.id` (RUT/NIT). Se deriva de `companies`.
-    let company = companyInput || '';
-    let tenantId = String((createUserDto as any).tenantId || '');
-    if (companyInput) {
-      const identity =
-        await this.tenantConfigService.resolveCompanyIdentity(companyInput);
+    let company = String(createUserDto.company || '').trim();
+    let tenantId = String((createUserDto as any).tenantId || '').trim();
+
+    if (requesterIsSuperAdmin) {
+      // El SuperAdmin debe elegir explícitamente la empresa destino; nunca se
+      // heredan su propia empresa ni su propio tenantId.
+      if (!company || !tenantId) {
+        throw new BadRequestException(
+          'La empresa y el tenantId son obligatorios para crear usuarios',
+        );
+      }
+    } else if (requester) {
+      // Admin/servicio: el par se fuerza desde su identidad verificada.
+      company = String(requester.company || '').trim();
+      tenantId = String(requester.tenantId || '').trim();
+      if (!company && !tenantId) {
+        throw new BadRequestException(
+          'La empresa y el tenantId del solicitante son obligatorios',
+        );
+      }
+    } else {
+      // Llamadas TCP sin requester: el contexto de tenant es la fuente.
+      company = company || String(store?.companyId || '').trim();
+      tenantId = tenantId || String(store?.tenantId || '').trim();
+    }
+
+    if (company || tenantId) {
+      const identity = await this.tenantConfigService.resolveCompanyPair(
+        company,
+        tenantId,
+      );
       if (!identity) {
         throw new BadRequestException(
-          `La empresa "${companyInput}" no existe o no está activa`,
+          `La empresa "${company || tenantId}" no existe, no está activa o el tenantId no corresponde`,
         );
       }
       company = identity.name;
-      if (tenantId && tenantId !== identity.id) {
-        throw new BadRequestException(
-          'El tenantId no corresponde a la empresa indicada',
-        );
-      }
       tenantId = identity.id;
-    } else {
-      tenantId = tenantId || store?.tenantId || company;
     }
 
     await this.userLimitsService.assertWithinLimits({
@@ -113,6 +132,10 @@ export class UsersService {
 
     const userData: any = {
       ...createUserDto,
+      // Se persiste SIEMPRE el par canónico resuelto (nunca el del solicitante
+      // ni un valor crudo del payload).
+      ...(company ? { company } : {}),
+      ...(tenantId ? { tenantId } : {}),
       password: tempPassword,
       // Al crear (invitación o temporal) el usuario debe establecer/cambiar su
       // contraseña. `isNewUser` se mantiene en sincronía (compatibilidad).

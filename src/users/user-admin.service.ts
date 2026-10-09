@@ -91,13 +91,33 @@ export class UserAdminService {
     });
   }
 
+  /**
+   * Filtro por identidad de empresa (tenantId + company). Un SuperAdmin no se
+   * acota (acceso a todas las empresas).
+   */
+  private companyFilter(requester: any): Record<string, string> {
+    if (requester?.isSuperAdmin) return {};
+    const filter: Record<string, string> = {};
+    if (requester?.company) filter.company = requester.company;
+    if (requester?.tenantId) filter.tenantId = requester.tenantId;
+    return filter;
+  }
+
   private scope(requester: any, extra: Record<string, any> = {}) {
-    const query: any = { deletedAt: null, ...extra };
-    if (!requester?.isSuperAdmin) {
-      if (requester?.company) query.company = requester.company;
-      if (requester?.tenantId) query.tenantId = requester.tenantId;
-    }
-    return query;
+    return { deletedAt: null, ...extra, ...this.companyFilter(requester) };
+  }
+
+  /**
+   * El target pertenece al mismo par (company + tenantId) del solicitante.
+   * Fail-closed: sin identidad de empresa no se puede operar.
+   */
+  private sameCompany(target: any, requester: any): boolean {
+    const hasCompany = !!requester?.company;
+    const hasTenant = !!requester?.tenantId;
+    if (!hasCompany && !hasTenant) return false;
+    const companyOk = !hasCompany || target?.company === requester.company;
+    const tenantOk = !hasTenant || target?.tenantId === requester.tenantId;
+    return companyOk && tenantOk;
   }
 
   private assertStaff(requester: any): void {
@@ -116,12 +136,12 @@ export class UserAdminService {
     if (!target) throw new NotFoundException('Usuario no encontrado');
     const t: any = target;
     if (requester?.isService) {
-      if (requester.company && t.company !== requester.company) {
+      if (!this.sameCompany(t, requester)) {
         throw new ForbiddenException('No puedes operar sobre otra empresa');
       }
       return target;
     }
-    if (!requester?.isSuperAdmin && t.company !== requester?.company) {
+    if (!requester?.isSuperAdmin && !this.sameCompany(t, requester)) {
       throw new ForbiddenException('No puedes operar sobre otra empresa');
     }
     if (!requester?.isSuperAdmin && t.isSuperAdmin) {
@@ -368,8 +388,8 @@ export class UserAdminService {
     this.assertNotSelf(target, requester, 'desactivar/eliminar');
 
     const updated = await this.userModel
-      .findByIdAndUpdate(
-        id,
+      .findOneAndUpdate(
+        { _id: id, ...this.companyFilter(requester) },
         { $set: { deletedAt: new Date(), isActived: false } },
         { new: true },
       )
@@ -387,11 +407,15 @@ export class UserAdminService {
         'Solo un SuperAdmin puede eliminar definitivamente',
       );
     }
-    const target = await this.userModel.findById(id).lean().exec();
+    const target = await this.userModel
+      .findOne({ _id: id, ...this.companyFilter(requester) })
+      .lean()
+      .exec();
+    this.assertCanManageTarget(target, requester);
     this.assertNotSelf(target, requester, 'eliminar');
 
     const deleted = await this.userModel
-      .findByIdAndDelete(id)
+      .findOneAndDelete({ _id: id, ...this.companyFilter(requester) })
       .setOptions({ bypassTenant: true })
       .lean()
       .exec();
@@ -418,7 +442,7 @@ export class UserAdminService {
     const until = options.until ? new Date(options.until) : null;
     await this.userModel
       .updateOne(
-        { _id: id },
+        { _id: id, ...this.companyFilter(requester) },
         {
           $set: {
             isBlocked: true,
@@ -445,7 +469,7 @@ export class UserAdminService {
 
     await this.userModel
       .updateOne(
-        { _id: id },
+        { _id: id, ...this.companyFilter(requester) },
         {
           $set: {
             isBlocked: false,
@@ -497,7 +521,7 @@ export class UserAdminService {
     }
 
     await this.userModel
-      .updateOne({ _id: id }, { $set: update })
+      .updateOne({ _id: id, ...this.companyFilter(requester) }, { $set: update })
       .setOptions({ bypassTenant: true })
       .exec();
 
@@ -563,8 +587,11 @@ export class UserAdminService {
 
     if (action === 'resetPassword') {
       for (const id of valid) {
-        const user = await this.userModel.findById(id).lean().exec();
-        if (!user || user.isSuperAdmin || user.deletedAt) {
+        const user = await this.userModel
+          .findOne(this.scope(requester, { _id: id }))
+          .lean()
+          .exec();
+        if (!user || user.isSuperAdmin) {
           results.push({ id, status: 'skipped', message: 'No elegible' });
           continue;
         }
@@ -572,7 +599,7 @@ export class UserAdminService {
         const hashedPassword = await bcrypt.hash(tempPassword, 10);
         await this.userModel
           .updateOne(
-            { _id: id },
+            { _id: id, ...this.companyFilter(requester) },
             {
               $set: {
                 password: hashedPassword,
@@ -628,6 +655,7 @@ export class UserAdminService {
           revoked += await this.sessionsService.revokeByUser(
             id,
             requester?.isSuperAdmin ? undefined : requester?.company,
+            requester?.isSuperAdmin ? undefined : requester?.tenantId,
           );
         } catch (error) {
           if (error instanceof ForbiddenException) {
@@ -747,7 +775,7 @@ export class UserAdminService {
       let affected = 0;
       if (hard) {
         const res = await this.userModel
-          .deleteMany({ _id: { $in: finalIds } })
+          .deleteMany({ _id: { $in: finalIds }, ...this.companyFilter(requester) })
           .setOptions({ bypassTenant: true })
           .exec();
         affected = res.deletedCount ?? 0;
@@ -864,7 +892,11 @@ export class UserAdminService {
       module: 'users',
       $or: [
         { userId: String(requester?._id) },
-        { isShared: true, company: requester?.company },
+        {
+          isShared: true,
+          ...(requester?.company ? { company: requester.company } : {}),
+          ...(requester?.tenantId ? { tenantId: requester.tenantId } : {}),
+        },
       ],
     };
     const data = await this.savedFilterModel
@@ -882,14 +914,22 @@ export class UserAdminService {
   ) {
     this.assertStaff(requester);
     if (!dto?.name) throw new BadRequestException('El nombre es obligatorio');
+    // Identidad canónica: el par (company + tenantId) del solicitante.
+    const identity = await this.tenantConfigService.resolveCompanyPair(
+      requester?.company,
+      requester?.tenantId,
+    );
+    if (!identity) {
+      throw new BadRequestException('La empresa del usuario no es válida');
+    }
     const created = await this.savedFilterModel.create({
       userId: String(requester?._id),
       name: dto.name,
       module: 'users',
       filters: dto.filters || {},
       isShared: dto.isShared === true,
-      company: requester?.company,
-      tenantId: requester?.tenantId || requester?.company,
+      company: identity.name,
+      tenantId: identity.id,
     });
     this.audit(requester, 'user.filters.saved', { name: dto.name });
     return { message: 'Búsqueda guardada', data: created.toObject() };
@@ -899,6 +939,7 @@ export class UserAdminService {
     const query: any = { _id: id };
     if (!requester?.isSuperAdmin) {
       query.userId = String(requester?._id);
+      Object.assign(query, this.companyFilter(requester));
     }
     const deleted = await this.savedFilterModel
       .findOneAndDelete(query)
@@ -1002,11 +1043,23 @@ export class UserAdminService {
   }
 
   async listCustomFields(requester: any, company?: string) {
-    const targetCompany = requester?.isSuperAdmin
+    // Identidad de la empresa destino: par canónico (name + id).
+    const identifier = requester?.isSuperAdmin
       ? company || requester?.company
       : requester?.company;
+    const identity = await this.tenantConfigService.resolveCompanyPair(
+      identifier,
+      requester?.isSuperAdmin ? undefined : requester?.tenantId,
+    );
+    if (requester?.isSuperAdmin && identifier && !identity) {
+      throw new BadRequestException(
+        'La empresa indicada no existe o no está activa',
+      );
+    }
+    const targetCompany = identity?.name || identifier;
+    const targetTenantId = identity?.id || requester?.tenantId;
     const enabled = await this.featurePolicy.isEnabled(
-      requester?.tenantId,
+      targetTenantId,
       targetCompany,
       'features.customFields',
     );
@@ -1015,7 +1068,7 @@ export class UserAdminService {
     }
     const query: any = { isActive: true };
     if (targetCompany) query.company = targetCompany;
-    if (requester?.tenantId) query.tenantId = requester.tenantId;
+    if (targetTenantId) query.tenantId = targetTenantId;
     const data = await this.customFieldModel
       .find(query)
       .sort({ order: 1 })
@@ -1029,19 +1082,30 @@ export class UserAdminService {
     if (!requester?.isSuperAdmin) {
       throw new ForbiddenException('Solo un SuperAdmin puede definir campos');
     }
-    await this.featurePolicy.assertEnabled(
-      requester?.tenantId,
-      dto?.company || requester?.company,
-      'features.customFields',
-      'La función de campos personalizados no está habilitada para la empresa',
-    );
     if (!dto?.key || !dto?.label) {
       throw new BadRequestException('key y label son obligatorios');
     }
+    // La empresa destino debe indicarse explícitamente y existir como par
+    // canónico (company + tenantId). Nunca se hereda la del SuperAdmin.
+    const identity = await this.tenantConfigService.resolveCompanyPair(
+      dto?.company,
+      dto?.tenantId,
+    );
+    if (!identity) {
+      throw new BadRequestException(
+        'La empresa es obligatoria y debe existir como empresa activa',
+      );
+    }
+    await this.featurePolicy.assertEnabled(
+      identity.id,
+      identity.name,
+      'features.customFields',
+      'La función de campos personalizados no está habilitada para la empresa',
+    );
     const created = await this.customFieldModel.create({
       ...dto,
-      company: dto.company || requester?.company,
-      tenantId: dto.tenantId || requester?.tenantId || requester?.company,
+      company: identity.name,
+      tenantId: identity.id,
       order: dto.order ?? 0,
       isActive: dto.isActive ?? true,
     });
@@ -1053,14 +1117,34 @@ export class UserAdminService {
     if (!requester?.isSuperAdmin) {
       throw new ForbiddenException('Solo un SuperAdmin puede definir campos');
     }
+    const existing: any = await this.customFieldModel
+      .findById(id)
+      .lean()
+      .exec();
+    if (!existing) throw new NotFoundException('Campo no encontrado');
+
+    const update: any = { ...dto };
+    if (dto?.company !== undefined || dto?.tenantId !== undefined) {
+      const identity = await this.tenantConfigService.resolveCompanyPair(
+        dto?.company,
+        dto?.tenantId,
+      );
+      if (!identity) {
+        throw new BadRequestException(
+          'La empresa indicada no existe o no está activa',
+        );
+      }
+      update.company = identity.name;
+      update.tenantId = identity.id;
+    }
     await this.featurePolicy.assertEnabled(
-      requester?.tenantId,
-      dto?.company || requester?.company,
+      update.tenantId ?? existing.tenantId ?? requester?.tenantId,
+      update.company ?? existing.company ?? requester?.company,
       'features.customFields',
       'La función de campos personalizados no está habilitada para la empresa',
     );
     const updated = await this.customFieldModel
-      .findByIdAndUpdate(id, { $set: dto }, { new: true })
+      .findByIdAndUpdate(id, { $set: update }, { new: true })
       .setOptions({ bypassTenant: true })
       .lean()
       .exec();

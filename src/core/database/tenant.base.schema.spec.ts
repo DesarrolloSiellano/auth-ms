@@ -6,7 +6,15 @@ describe('tenant.base.schema', () => {
     addTenantIndexes(schema as any, ['email', 'phone']);
 
     expect(schema.index).toHaveBeenCalledWith({ tenantId: 1, company: 1 });
-    expect(schema.index).toHaveBeenCalledWith({ tenantId: 1, email: 1 });
-    expect(schema.index).toHaveBeenCalledWith({ tenantId: 1, phone: 1 });
+    expect(schema.index).toHaveBeenCalledWith({
+      tenantId: 1,
+      company: 1,
+      email: 1,
+    });
+    expect(schema.index).toHaveBeenCalledWith({
+      tenantId: 1,
+      company: 1,
+      phone: 1,
+    });
   });
 });

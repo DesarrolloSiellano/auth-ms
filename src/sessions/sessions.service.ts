@@ -50,11 +50,15 @@ export class SessionsService implements OnModuleDestroy {
   }
 
   /**
-   * Filtro de alcance: un admin no-super (scoped por empresa) no puede ver ni
-   * revocar sesiones de SuperAdmins.
+   * Filtro de alcance: un admin no-super (scoped por el par
+   * `company` + `tenantId`) no puede ver ni revocar sesiones de SuperAdmins.
    */
-  private scopeFilter(company?: string): Record<string, any> {
-    return company ? { company, isSuperAdmin: { $ne: true } } : {};
+  private scopeFilter(company?: string, tenantId?: string): Record<string, any> {
+    const filter: Record<string, any> = {};
+    if (company) filter.company = company;
+    if (tenantId) filter.tenantId = tenantId;
+    if (company || tenantId) filter.isSuperAdmin = { $ne: true };
+    return filter;
   }
 
   private purgeExpired(): void {
@@ -188,12 +192,16 @@ export class SessionsService implements OnModuleDestroy {
 
   async findActiveSessions(params: {
     company?: string;
+    tenantId?: string;
     email?: string;
     userId?: string;
     from?: number;
     limit?: number;
   }) {
-    const query: any = { isActive: true, ...this.scopeFilter(params.company) };
+    const query: any = {
+      isActive: true,
+      ...this.scopeFilter(params.company, params.tenantId),
+    };
     if (params.userId) query.user = params.userId;
     if (params.email) {
       query.email = new RegExp(params.email, 'i');
@@ -285,8 +293,12 @@ export class SessionsService implements OnModuleDestroy {
 
   // ------------------------------------------------------------- Revocación
 
-  async revokeById(id: string, company?: string) {
-    const query: any = { _id: id, isActive: true, ...this.scopeFilter(company) };
+  async revokeById(id: string, company?: string, tenantId?: string) {
+    const query: any = {
+      _id: id,
+      isActive: true,
+      ...this.scopeFilter(company, tenantId),
+    };
 
     const session = await this.sessionModel
       .findOneAndUpdate(query, { $set: { isActive: false } }, { new: true })
@@ -298,15 +310,26 @@ export class SessionsService implements OnModuleDestroy {
     return session;
   }
 
-  async revokeByUser(userId: string, company?: string): Promise<number> {
+  async revokeByUser(
+    userId: string,
+    company?: string,
+    tenantId?: string,
+  ): Promise<number> {
     // Un admin (alcance por empresa) no puede revocar sesiones de un
     // SuperAdmin, aunque pertenezca a su misma empresa.
-    if (company && this.userModel) {
+    if ((company || tenantId) && this.userModel) {
       const target = await this.userModel
-        .findById(userId)
+        .findOne({
+          _id: userId,
+          ...(company ? { company } : {}),
+          ...(tenantId ? { tenantId } : {}),
+        })
         .select('isSuperAdmin')
         .lean()
         .exec();
+      if (!target) {
+        throw new ForbiddenException('No puedes operar sobre otra empresa');
+      }
       if (target?.isSuperAdmin) {
         throw new ForbiddenException(
           'No puedes revocar sesiones de un SuperAdmin',
@@ -317,7 +340,7 @@ export class SessionsService implements OnModuleDestroy {
     const query: any = {
       user: userId,
       isActive: true,
-      ...this.scopeFilter(company),
+      ...this.scopeFilter(company, tenantId),
     };
 
     const sessions = await this.sessionModel
@@ -336,11 +359,15 @@ export class SessionsService implements OnModuleDestroy {
     return result.modifiedCount ?? 0;
   }
 
-  async revokeMany(ids: string[], company?: string): Promise<number> {
+  async revokeMany(
+    ids: string[],
+    company?: string,
+    tenantId?: string,
+  ): Promise<number> {
     const query: any = {
       _id: { $in: ids.filter((id) => Types.ObjectId.isValid(id)) },
       isActive: true,
-      ...this.scopeFilter(company),
+      ...this.scopeFilter(company, tenantId),
     };
 
     const sessions = await this.sessionModel
@@ -359,8 +386,11 @@ export class SessionsService implements OnModuleDestroy {
     return result.modifiedCount ?? 0;
   }
 
-  async revokeAll(company?: string): Promise<number> {
-    const query: any = { isActive: true, ...this.scopeFilter(company) };
+  async revokeAll(company?: string, tenantId?: string): Promise<number> {
+    const query: any = {
+      isActive: true,
+      ...this.scopeFilter(company, tenantId),
+    };
 
     const sessions = await this.sessionModel
       .find(query)

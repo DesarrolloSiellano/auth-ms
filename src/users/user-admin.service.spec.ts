@@ -38,6 +38,18 @@ describe('UserAdminService', () => {
   const tenantConfigService: any = {
     getPolicyValue: jest.fn(),
     ensureRoleLimitPolicy: jest.fn(),
+    resolveCompanyPair: jest
+      .fn()
+      .mockImplementation((company?: string, tenantId?: string) => {
+        const name = String(company || '').trim();
+        const id = String(tenantId || '').trim();
+        if (name && id) {
+          return Promise.resolve(id === `tenant-${name}` ? { id, name } : null);
+        }
+        const identifier = name || id;
+        if (!identifier) return Promise.resolve(null);
+        return Promise.resolve({ id: `tenant-${identifier}`, name: identifier });
+      }),
   };
   const userLimitsService: any = {
     assertWithinLimits: jest.fn(),
@@ -128,7 +140,7 @@ describe('UserAdminService', () => {
     await service.block(id, { isAdmin: true, company: 'X' }, { reason: 'test' });
 
     expect(userModel.updateOne).toHaveBeenCalledWith(
-      { _id: id },
+      expect.objectContaining({ _id: id, company: 'X' }),
       expect.objectContaining({
         $set: expect.objectContaining({ isBlocked: true, blockReason: 'test' }),
       }),
