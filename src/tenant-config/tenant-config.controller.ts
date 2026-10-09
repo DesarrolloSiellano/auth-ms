@@ -236,6 +236,24 @@ export class TenantConfigController {
     );
   }
 
+  /**
+   * Valida el par canónico (company + tenantId) de una empresa activa.
+   * Usado por apps consumidoras para validar la selección de empresa del
+   * SuperAdmin sin crear configs huefanas ni consultar por cada petición.
+   */
+  @MessagePattern({ cmd: 'resolveCompanyPair' })
+  async msResolveCompanyPair(@Payload() payload: any) {
+    const identity = await this.tenantConfigService.resolveCompanyPair(
+      payload?.company,
+      payload?.tenantId,
+    );
+    return {
+      valid: identity !== null,
+      company: identity?.name ?? null,
+      tenantId: identity?.id ?? null,
+    };
+  }
+
   @MessagePattern({ cmd: 'getTenantPolicyCatalog' })
   msGetPolicyCatalog() {
     return this.tenantConfigService.getCatalog(true);

@@ -33,6 +33,8 @@ describe('buildIdentityPayload', () => {
       tenantId: '000000',
       isSuperAdmin: false,
       isAdmin: true,
+      roles: ['ADM'],
+      permissions: ['create'],
       isTrial: false,
       trialStartedAt: null,
       trialEndsAt: null,
@@ -60,7 +62,7 @@ describe('buildIdentityPayload', () => {
     expect(payload.trialEndsAt).toBe(end);
   });
 
-  it('no debe incluir modules, roles, permissions ni datos sensibles', () => {
+  it('debe incluir roles y permisos compactos (sin objetos ni modules)', () => {
     const user = {
       _id: 'abc123',
       name: 'Juan',
@@ -70,19 +72,28 @@ describe('buildIdentityPayload', () => {
       company: 'EmpresaX',
       tenantId: '000000',
       modules: [{ name: 'adminUserModule', routes: [] }],
-      roles: [{ name: 'Administrador', codeRol: 'ADM' }],
-      permissions: [{ name: 'create' }],
+      roles: [
+        { name: 'Administrador', codeRol: 'ADM' },
+        { name: 'Agente', codeRol: 'AGE' },
+      ],
+      permissions: [
+        { name: 'crear', resource: 'tickets', action: 'create', isActive: true },
+        { name: 'editar', resource: 'tickets', action: 'update', isActive: true },
+        { name: 'inactivo', resource: 'tickets', action: 'delete', isActive: false },
+      ],
       password: 'hashed-secret',
       passwordResetToken: 'token',
     };
 
     const payload = buildIdentityPayload(user);
 
+    expect(payload.roles).toEqual(['ADM', 'AGE']);
+    expect(payload.permissions).toEqual(['tickets:create', 'tickets:update']);
     expect(payload).not.toHaveProperty('modules');
-    expect(payload).not.toHaveProperty('roles');
-    expect(payload).not.toHaveProperty('permissions');
     expect(payload).not.toHaveProperty('password');
     expect(payload).not.toHaveProperty('passwordResetToken');
     expect(payload).not.toHaveProperty('isNewUser');
+    expect(typeof (payload as any).roles[0]).toBe('string');
+    expect(typeof (payload as any).permissions[0]).toBe('string');
   });
 });
