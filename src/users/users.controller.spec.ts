@@ -1,7 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
-import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import {
+  UnauthorizedException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { UserAdminService } from './user-admin.service';
@@ -89,30 +93,64 @@ describe('UsersController', () => {
 
     it('permite crear SuperAdmin si el autenticado es SuperAdmin', () => {
       usersServiceMock.create.mockReturnValue('ok');
-      const result = controller.create({ isSuperAdmin: true } as any, {
-        user: { isAdmin: true, isSuperAdmin: true },
-      });
+      const result = controller.create(
+        { isSuperAdmin: true, company: 'EmpresaX', tenantId: 'T-X' } as any,
+        { user: { isAdmin: true, isSuperAdmin: true } },
+      );
       expect(result).toBe('ok');
     });
 
-    it('fuerza la empresa del admin autenticado al crear', () => {
+    it('exige company + tenantId al SuperAdmin', () => {
+      expect(() =>
+        controller.create({ isSuperAdmin: true } as any, {
+          user: { isAdmin: true, isSuperAdmin: true },
+        }),
+      ).toThrow(BadRequestException);
+      expect(() =>
+        controller.create({ company: 'EmpresaX' } as any, {
+          user: { isAdmin: true, isSuperAdmin: true },
+        }),
+      ).toThrow(BadRequestException);
+    });
+
+    it('fuerza el par del admin autenticado al crear', () => {
       usersServiceMock.create.mockReturnValue('ok');
       void controller.create({ company: 'EmpresaA' } as any, {
-        user: { isAdmin: true, isSuperAdmin: false, company: 'EmpresaA', tenantId: 'T-1' },
+        user: {
+          isAdmin: true,
+          isSuperAdmin: false,
+          company: 'EmpresaA',
+          tenantId: 'T-1',
+        },
       });
       expect(usersServiceMock.create).toHaveBeenCalledWith(
-        expect.objectContaining({ company: 'EmpresaA' }),
+        expect.objectContaining({ company: 'EmpresaA', tenantId: 'T-1' }),
         expect.objectContaining({ isAdmin: true }),
       );
-      // El `tenantId` (RUT/NIT) se deriva de `companies` en el servicio.
-      const passed = usersServiceMock.create.mock.calls[0][0];
-      expect(passed.tenantId).toBeUndefined();
     });
 
     it('rechaza crear para otra empresa (no SuperAdmin)', () => {
       expect(() =>
         controller.create({ company: 'EmpresaB' } as any, {
-          user: { isAdmin: true, isSuperAdmin: false, company: 'EmpresaA' },
+          user: {
+            isAdmin: true,
+            isSuperAdmin: false,
+            company: 'EmpresaA',
+            tenantId: 'T-1',
+          },
+        }),
+      ).toThrow(ForbiddenException);
+    });
+
+    it('rechaza un tenantId de otra empresa (no SuperAdmin)', () => {
+      expect(() =>
+        controller.create({ tenantId: 'T-2' } as any, {
+          user: {
+            isAdmin: true,
+            isSuperAdmin: false,
+            company: 'EmpresaA',
+            tenantId: 'T-1',
+          },
         }),
       ).toThrow(ForbiddenException);
     });

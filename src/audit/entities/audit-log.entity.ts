@@ -47,7 +47,8 @@ export const AuditLogSchema = new Schema({
 
 AuditLogSchema.plugin(tenantPlugin);
 
-AuditLogSchema.index({ company: 1, createdAt: -1 });
+// La identidad de empresa es el par (tenantId + company).
+AuditLogSchema.index({ tenantId: 1, company: 1, createdAt: -1 });
 AuditLogSchema.index({ userId: 1, createdAt: -1 });
 AuditLogSchema.index({ category: 1, createdAt: -1 });
 

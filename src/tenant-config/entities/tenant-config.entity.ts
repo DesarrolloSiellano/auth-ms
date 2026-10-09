@@ -21,6 +21,9 @@ export const TenantConfigSchema = new Schema(
   { timestamps: true },
 );
 
+// La identidad de empresa es el par (tenantId + company).
+TenantConfigSchema.index({ tenantId: 1, company: 1 }, { unique: true });
+
 export const TenantConfigModel = model<TenantConfig>(
   'TenantConfig',
   TenantConfigSchema,

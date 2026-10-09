@@ -48,15 +48,21 @@ export class SessionsController {
     });
   }
 
-  /** Solo admin/superadmin; un admin no-super queda acotado a su empresa. */
-  private resolveScope(req: any): string | undefined {
+  /**
+   * Solo admin/superadmin; un admin no-super queda acotado al par
+   * (`company` + `tenantId`) de su empresa.
+   */
+  private resolveScope(
+    req: any,
+  ): { company?: string; tenantId?: string } | undefined {
     const user = req?.user;
     if (!user?.isAdmin && !user?.isSuperAdmin) {
       throw new ForbiddenException(
         'No tienes permiso para gestionar sesiones',
       );
     }
-    return user?.isSuperAdmin ? undefined : user?.company;
+    if (user?.isSuperAdmin) return undefined;
+    return { company: user?.company, tenantId: user?.tenantId };
   }
 
   @Get()
@@ -72,9 +78,10 @@ export class SessionsController {
     @Query('from') from?: number,
     @Query('limit') limit?: number,
   ) {
-    const company = this.resolveScope(req);
+    const scope = this.resolveScope(req);
     return this.sessionsService.findActiveSessions({
-      company,
+      company: scope?.company,
+      tenantId: scope?.tenantId,
       email,
       userId,
       from: from !== undefined ? Number(from) : 0,
@@ -94,9 +101,10 @@ export class SessionsController {
   @ParamFormat({ param: 'userId', kind: 'objectId' })
   @ApiOperation({ summary: 'Lista las sesiones activas de un usuario' })
   findByUser(@Param('userId') userId: string, @Req() req: any) {
-    const company = this.resolveScope(req);
+    const scope = this.resolveScope(req);
     return this.sessionsService.findActiveSessions({
-      company,
+      company: scope?.company,
+      tenantId: scope?.tenantId,
       userId,
       from: 0,
       limit: 100,
@@ -106,9 +114,13 @@ export class SessionsController {
   @Post('revoke')
   @ApiOperation({ summary: 'Revoca un lote de sesiones por ids' })
   async revokeMany(@Body() body: { ids: string[] }, @Req() req: any) {
-    const company = this.resolveScope(req);
+    const scope = this.resolveScope(req);
     const ids = body?.ids || [];
-    const revoked = await this.sessionsService.revokeMany(ids, company);
+    const revoked = await this.sessionsService.revokeMany(
+      ids,
+      scope?.company,
+      scope?.tenantId,
+    );
     this.audit(req, 'session.revoked.batch', { ids, revoked });
     return {
       message: 'Sessions revoked successfully',
@@ -121,8 +133,12 @@ export class SessionsController {
   @ParamFormat({ param: 'userId', kind: 'objectId' })
   @ApiOperation({ summary: 'Revoca todas las sesiones de un usuario' })
   async revokeByUser(@Param('userId') userId: string, @Req() req: any) {
-    const company = this.resolveScope(req);
-    const revoked = await this.sessionsService.revokeByUser(userId, company);
+    const scope = this.resolveScope(req);
+    const revoked = await this.sessionsService.revokeByUser(
+      userId,
+      scope?.company,
+      scope?.tenantId,
+    );
     this.audit(req, 'session.revoked.user', { userId, revoked });
     return {
       message: 'User sessions revoked successfully',
@@ -165,8 +181,12 @@ export class SessionsController {
   @ParamFormat({ param: 'id', kind: 'objectId' })
   @ApiOperation({ summary: 'Revoca una sesión por id' })
   async revokeById(@Param('id') id: string, @Req() req: any) {
-    const company = this.resolveScope(req);
-    const session = await this.sessionsService.revokeById(id, company);
+    const scope = this.resolveScope(req);
+    const session = await this.sessionsService.revokeById(
+      id,
+      scope?.company,
+      scope?.tenantId,
+    );
     if (!session) {
       throw new NotFoundException('Sesión no encontrada');
     }
@@ -183,9 +203,12 @@ export class SessionsController {
     summary: 'Revoca todas las sesiones (de la empresa o globales)',
   })
   async revokeAll(@Req() req: any) {
-    const company = this.resolveScope(req);
-    const revoked = await this.sessionsService.revokeAll(company);
-    this.audit(req, 'session.revoked.all', { revoked, company });
+    const scope = this.resolveScope(req);
+    const revoked = await this.sessionsService.revokeAll(
+      scope?.company,
+      scope?.tenantId,
+    );
+    this.audit(req, 'session.revoked.all', { revoked, scope });
     return {
       message: 'Sessions revoked successfully',
       data: { revoked },

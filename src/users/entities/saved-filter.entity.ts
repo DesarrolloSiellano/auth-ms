@@ -19,15 +19,16 @@ export const SavedFilterSchema = new Schema(
     module: { type: String, default: 'users', index: true },
     filters: { type: Schema.Types.Mixed, default: {} },
     isShared: { type: Boolean, default: false },
-    tenantId: { type: String },
-    company: { type: String, index: true },
+    tenantId: { type: String, required: true, index: true },
+    company: { type: String, required: true, index: true },
   },
   { timestamps: true },
 );
 
 SavedFilterSchema.plugin(tenantPlugin);
 SavedFilterSchema.index({ userId: 1, module: 1 });
-SavedFilterSchema.index({ company: 1, module: 1, isShared: 1 });
+// La identidad de empresa es el par (tenantId + company).
+SavedFilterSchema.index({ tenantId: 1, company: 1, module: 1, isShared: 1 });
 
 export const SavedFilterModel = model<SavedFilter>(
   'SavedFilter',

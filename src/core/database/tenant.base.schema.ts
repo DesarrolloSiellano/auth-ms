@@ -17,7 +17,8 @@ export const TenantBaseSchema = {
 
 /**
  * Helper to create compound indexes for multi-tenant isolation.
- * Usually (tenantId, _id) or (tenantId, customField).
+ * La identidad de empresa es el par (tenantId + company), por lo que ambos
+ * son el prefijo de todo índice.
  */
 export function addTenantIndexes(
   schema: MongooseSchema,
@@ -25,6 +26,6 @@ export function addTenantIndexes(
 ) {
   schema.index({ tenantId: 1, company: 1 });
   fields.forEach((field) => {
-    schema.index({ tenantId: 1, [field]: 1 });
+    schema.index({ tenantId: 1, company: 1, [field]: 1 });
   });
 }
