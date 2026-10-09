@@ -192,7 +192,7 @@ Este enfoque permite un diseño modular, escalable y flexible, aprovechando lo m
       options: {
         host: configService.get<string>('MICROSERVICE_HOST', '127.0.0.1'),
         port: configService.get<number>('MICROSERVICE_PORT', 3011),
-        ...(tlsEnabled && tlsOptions ? { tls: tlsOptions } : {}),
+        ...(tlsEnabled && tlsOptions ? { tlsOptions } : {}),
       },
     },
     { inheritAppConfig: true },
