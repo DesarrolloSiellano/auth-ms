@@ -72,9 +72,10 @@ export const SessionSchema = new Schema({
 // Registrar plugin de multi-tenant automático
 SessionSchema.plugin(tenantPlugin);
 
-// Configuración de índices compuestos multi-tenant para rendimiento y aislamiento de unicidad
-SessionSchema.index({ company: 1, user: 1 });
-SessionSchema.index({ company: 1, refreshToken: 1 });
+// Configuración de índices compuestos multi-tenant para rendimiento y aislamiento.
+// La identidad de empresa es el par (tenantId + company).
+SessionSchema.index({ tenantId: 1, company: 1, user: 1 });
+SessionSchema.index({ tenantId: 1, company: 1, refreshToken: 1 });
 SessionSchema.index({ refreshToken: 1, isActive: 1 });
 addTenantIndexes(SessionSchema, ['refreshToken']);
 

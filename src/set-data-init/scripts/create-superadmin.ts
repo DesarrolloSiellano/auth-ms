@@ -51,7 +51,8 @@ export async function main(): Promise<void> {
   let company = await companies.findOne({ name: 'BPONET' });
   if (!company) {
     const insert = await companies.insertOne(ADMIN_COMPANY[0]);
-    company = { _id: insert.insertedId, name: 'BPONET' };
+    // El `id` (RUT/NIT) es el tenantId canónico: se conserva junto al _id.
+    company = { ...(ADMIN_COMPANY[0] as any), _id: insert.insertedId };
     console.log('Compañía BPONET creada.');
   }
 
@@ -85,7 +86,7 @@ export async function main(): Promise<void> {
     password: passwordHash,
     phone: '',
     company: 'BPONET',
-    tenantId: String((company as any).id ?? company._id),
+    tenantId: String((company as any)?.id ?? (company as any)?._id),
     isActived: true,
     isAdmin: true,
     isSuperAdmin: true,

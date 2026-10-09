@@ -58,12 +58,15 @@ export function tenantPlugin(schema: Schema) {
 
     if (store && this.isNew) {
       if (store.isSuperAdmin) {
-        // El SuperAdmin puede especificar la empresa; solo se completa si falta.
-        if (!this.get('company') && store.companyId) {
-          this.set('company', store.companyId);
-        }
-        if (!this.get('tenantId') && store.tenantId) {
-          this.set('tenantId', store.tenantId);
+        // El SuperAdmin puede especificar la empresa. Solo se completa el par
+        // COMPLETO desde el contexto cuando el documento no trae ninguno de
+        // los dos (evita mezclar `company` de una empresa con `tenantId` de
+        // otra).
+        const hasCompany = !!this.get('company');
+        const hasTenant = !!this.get('tenantId');
+        if (!hasCompany && !hasTenant) {
+          if (store.companyId) this.set('company', store.companyId);
+          if (store.tenantId) this.set('tenantId', store.tenantId);
         }
       } else {
         // Usuario de empresa: se FUERZA su tenant (no se permite inyectar otro).

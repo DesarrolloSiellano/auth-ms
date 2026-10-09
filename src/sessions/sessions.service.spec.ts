@@ -25,7 +25,7 @@ describe('SessionsService', () => {
   mockModel.find = jest.fn();
   mockModel.countDocuments = jest.fn();
 
-  const mockUserModel: any = { findById: jest.fn() };
+  const mockUserModel: any = { findOne: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -101,13 +101,13 @@ describe('SessionsService', () => {
   });
 
   it('revokeByUser desactiva todas y devuelve el total', async () => {
-    (mockUserModel.findById as jest.Mock).mockReturnValue(
+    (mockUserModel.findOne as jest.Mock).mockReturnValue(
       queryChain({ isSuperAdmin: false }),
     );
     mockModel.find.mockReturnValue(queryChain([{ _id: 's1' }, { _id: 's2' }]));
     mockModel.updateMany.mockReturnValue(queryChain({ modifiedCount: 2 }));
 
-    const revoked = await service.revokeByUser('u1', 'EmpresaX');
+    const revoked = await service.revokeByUser('u1', 'EmpresaX', 'T-X');
 
     expect(revoked).toBe(2);
     expect(mockModel.updateMany).toHaveBeenCalledWith(
@@ -115,6 +115,7 @@ describe('SessionsService', () => {
         user: 'u1',
         isActive: true,
         company: 'EmpresaX',
+        tenantId: 'T-X',
         isSuperAdmin: { $ne: true },
       },
       { $set: { isActive: false } },
@@ -122,13 +123,22 @@ describe('SessionsService', () => {
   });
 
   it('revokeByUser lanza 403 si el objetivo es SuperAdmin (admin de empresa)', async () => {
-    (mockUserModel.findById as jest.Mock).mockReturnValue(
+    (mockUserModel.findOne as jest.Mock).mockReturnValue(
       queryChain({ isSuperAdmin: true }),
     );
 
-    await expect(service.revokeByUser('u1', 'EmpresaX')).rejects.toThrow(
-      'No puedes revocar sesiones de un SuperAdmin',
-    );
+    await expect(
+      service.revokeByUser('u1', 'EmpresaX', 'T-X'),
+    ).rejects.toThrow('No puedes revocar sesiones de un SuperAdmin');
+    expect(mockModel.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('revokeByUser lanza 403 si el objetivo no pertenece a la empresa', async () => {
+    (mockUserModel.findOne as jest.Mock).mockReturnValue(queryChain(null));
+
+    await expect(
+      service.revokeByUser('u1', 'EmpresaX', 'T-X'),
+    ).rejects.toThrow('No puedes operar sobre otra empresa');
     expect(mockModel.updateMany).not.toHaveBeenCalled();
   });
 

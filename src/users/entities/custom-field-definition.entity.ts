@@ -52,7 +52,11 @@ export const CustomFieldDefinitionSchema = new Schema(
 );
 
 CustomFieldDefinitionSchema.plugin(tenantPlugin);
-CustomFieldDefinitionSchema.index({ tenantId: 1, key: 1 }, { unique: true });
+// La identidad de empresa es el par (tenantId + company).
+CustomFieldDefinitionSchema.index(
+  { tenantId: 1, company: 1, key: 1 },
+  { unique: true },
+);
 
 export const CustomFieldDefinitionModel = model<CustomFieldDefinition>(
   'CustomFieldDefinition',

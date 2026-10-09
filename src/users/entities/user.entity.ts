@@ -180,14 +180,15 @@ export const UserSchema = new Schema({
 // Registrar plugin de multi-tenant automático
 UserSchema.plugin(tenantPlugin);
 
-// Configuración de índices compuestos multi-tenant para rendimiento y aislamiento de unicidad
-UserSchema.index({ company: 1, email: 1 }, { unique: true });
-UserSchema.index({ company: 1, name: 1, lastName: 1 });
-UserSchema.index({ company: 1, username: 1 });
-UserSchema.index({ company: 1, phone: 1 });
-UserSchema.index({ company: 1, deletedAt: 1 });
-UserSchema.index({ company: 1, tags: 1 });
-UserSchema.index({ company: 1, groups: 1 });
+// Configuración de índices compuestos multi-tenant para rendimiento y aislamiento.
+// La identidad de empresa es el par (tenantId + company).
+UserSchema.index({ tenantId: 1, company: 1, email: 1 }, { unique: true });
+UserSchema.index({ tenantId: 1, company: 1, name: 1, lastName: 1 });
+UserSchema.index({ tenantId: 1, company: 1, username: 1 });
+UserSchema.index({ tenantId: 1, company: 1, phone: 1 });
+UserSchema.index({ tenantId: 1, company: 1, deletedAt: 1 });
+UserSchema.index({ tenantId: 1, company: 1, tags: 1 });
+UserSchema.index({ tenantId: 1, company: 1, groups: 1 });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 addTenantIndexes(UserSchema, ['email']);
 

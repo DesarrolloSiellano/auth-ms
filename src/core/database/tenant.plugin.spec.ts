@@ -126,7 +126,7 @@ describe('tenantPlugin', () => {
       expect(doc.set).toHaveBeenCalledWith('tenantId', 'T-001');
     });
 
-    it('permite a un SuperAdmin especificar la empresa', () => {
+    it('un SuperAdmin conserva la empresa elegida y no mezcla el tenantId del contexto', () => {
       const preSpy = applyPlugin();
       const hook = getHook(preSpy, 'validate');
       const next = jest.fn();
@@ -145,7 +145,29 @@ describe('tenantPlugin', () => {
         },
       );
 
-      expect(doc.set).not.toHaveBeenCalledWith('company', 'EmpresaX');
+      // Hay company explícita: no se completa el par desde el contexto (evita
+      // mezclar empresa destino con el tenantId del SuperAdmin).
+      expect(doc.set).not.toHaveBeenCalled();
+    });
+
+    it('un SuperAdmin sin par explícito usa el contexto completo', () => {
+      const preSpy = applyPlugin();
+      const hook = getHook(preSpy, 'validate');
+      const next = jest.fn();
+      const doc = {
+        isNew: true,
+        get: jest.fn().mockReturnValue(undefined),
+        set: jest.fn(),
+      };
+
+      tenantLocalStorage.run(
+        { ...store, isSuperAdmin: true, companyId: 'EmpresaX' },
+        () => {
+          hook.call(doc, next);
+        },
+      );
+
+      expect(doc.set).toHaveBeenCalledWith('company', 'EmpresaX');
       expect(doc.set).toHaveBeenCalledWith('tenantId', 'T-001');
     });
   });
