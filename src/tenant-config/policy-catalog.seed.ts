@@ -181,6 +181,14 @@ export const POLICY_CATALOG_SEED: SeedPolicy[] = [
     '0 = ilimitado',
     'correos/mes',
   ),
+  bool(
+    'channels.whatsapp.embeddedSignup.enabled',
+    'Embedded Signup (Meta)',
+    'channels',
+    true,
+    18,
+    'Permite conectar números con el flujo oficial de Meta, además del token manual (BYO).',
+  ),
 
   // Mensajes (Bolsas por categoría). El audio se controla por `channels.audio.*`.
   // 0 = ilimitado; cuando la bolsa global (`channels.whatsapp.monthlyLimit`) > 0
@@ -223,8 +231,20 @@ export const POLICY_CATALOG_SEED: SeedPolicy[] = [
   ),
 
   // Features (entitlements)
-  bool('features.georreferenciacion', 'Georreferenciación', 'features', true, 34),
-  bool('features.whatsappIntegration', 'Integración WhatsApp', 'features', true, 35),
+  bool(
+    'features.georreferenciacion',
+    'Georreferenciación',
+    'features',
+    true,
+    34,
+  ),
+  bool(
+    'features.whatsappIntegration',
+    'Integración WhatsApp',
+    'features',
+    true,
+    35,
+  ),
   bool('features.qr', 'QR', 'features', true, 36),
   bool('features.botAutomatizado', 'Bot automatizado', 'features', true, 38),
   bool('features.chatbot', 'Chatbot (opciones)', 'features', true, 39),
@@ -251,6 +271,22 @@ export const POLICY_CATALOG_SEED: SeedPolicy[] = [
   bool('features.userGroups', 'Grupos de usuario', 'features', true, 48),
   bool('features.customFields', 'Campos personalizados', 'features', true, 49),
   bool('features.invitations', 'Invitaciones por correo', 'features', true, 50),
+  bool(
+    'features.coexistenceHistoryImport',
+    'Importar historial de coexistencia',
+    'features',
+    true,
+    51,
+    'Importa los chats históricos de números en coexistencia (los contactos se sincronizan siempre).',
+  ),
+  bool(
+    'features.codeNode',
+    'Nodos de código',
+    'features',
+    true,
+    52,
+    'Permite ejecutar nodos de código QuickJS aislados en los flujos de automatización.',
+  ),
 
   // Seguridad
   num(
@@ -281,7 +317,15 @@ export const POLICY_CATALOG_SEED: SeedPolicy[] = [
 
   // Límites
   num('limits.maxUsers', 'Máx. usuarios', 'limits', 0, 50, '0 = ilimitado'),
-  num('limits.maxStorageMb', 'Máx. almacenamiento', 'limits', 0, 51, '0 = ilimitado', 'MB'),
+  num(
+    'limits.maxStorageMb',
+    'Máx. almacenamiento',
+    'limits',
+    0,
+    51,
+    '0 = ilimitado',
+    'MB',
+  ),
   // Tope por rol. Se crea una política `limits.roles.<CODE>` por cada rol.
   num('limits.roles.AGE', 'Máx. agentes', 'limits', 5, 52, '0 = ilimitado'),
   num(
@@ -292,14 +336,7 @@ export const POLICY_CATALOG_SEED: SeedPolicy[] = [
     53,
     '0 = ilimitado',
   ),
-  num(
-    'limits.roles.AQA',
-    'Máx. Auditor QA',
-    'limits',
-    0,
-    54,
-    '0 = ilimitado',
-  ),
+  num('limits.roles.AQA', 'Máx. Auditor QA', 'limits', 0, 54, '0 = ilimitado'),
   num(
     'limits.roles.AUD',
     'Máx. usuarios con rol AUD',
@@ -332,6 +369,15 @@ export const POLICY_CATALOG_SEED: SeedPolicy[] = [
     'limits',
     0,
     59,
+    '0 = ilimitado',
+    'conexiones',
+  ),
+  num(
+    'limits.maxWhatsappEmbeddedSignupConnections',
+    'Máx. conexiones por Embedded Signup',
+    'limits',
+    0,
+    61,
     '0 = ilimitado',
     'conexiones',
   ),

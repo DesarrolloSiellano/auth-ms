@@ -130,7 +130,7 @@ describe('AuthService', () => {
     expect(service).toBeDefined();
   });
 
-  it('debe generar un payload ligero de identidad en el login (sin modules/roles/permissions)', async () => {
+  it('debe generar un payload ligero de identidad con roles y permisos compactos', async () => {
     mockUserModel.findOne.mockReturnValue({
       lean: jest.fn().mockReturnValue({
         exec: jest.fn().mockResolvedValue(userMock),
@@ -161,11 +161,11 @@ describe('AuthService', () => {
       trialEndsAt: null,
       emailVerified: false,
       isAdmin: true,
+      roles: ['ADM'],
+      permissions: [],
       sid: expect.any(String),
     });
     expect(accessPayload).not.toHaveProperty('modules');
-    expect(accessPayload).not.toHaveProperty('roles');
-    expect(accessPayload).not.toHaveProperty('permissions');
     expect(accessPayload).not.toHaveProperty('password');
 
     expect(result.meta.payload).toEqual(accessPayload);
@@ -247,6 +247,8 @@ describe('AuthService', () => {
         trialEndsAt: null,
         emailVerified: false,
         isAdmin: true,
+        roles: ['ADM'],
+        permissions: [],
         sid: '507f1f77bcf86cd799439011',
       });
       expect(verifySpy).toHaveBeenCalledWith(
