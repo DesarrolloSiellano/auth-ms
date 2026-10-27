@@ -96,7 +96,7 @@ describe('bootstrap', () => {
     expect(mockApp.connectMicroservice).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
-          tls: expect.objectContaining({
+          tlsOptions: expect.objectContaining({
             requestCert: true,
             rejectUnauthorized: true,
           }),
