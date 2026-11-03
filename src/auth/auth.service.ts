@@ -886,6 +886,17 @@ export class AuthService {
     return { message: 'Correo verificado exitosamente' };
   }
 
+  /**
+   * Verifica la contraseña actual de un usuario sin modificarla. Se usa en
+   * operaciones sensibles (p. ej., purga de datos de una empresa).
+   */
+  async verifyCurrentPassword(userId: string, password: string): Promise<boolean> {
+    if (!userId || !password) return false;
+    const userDB = await this.userModel.findOne({ _id: userId }).exec();
+    if (!userDB?.password) return false;
+    return this.encryptionService.verifyPassword(password, userDB.password);
+  }
+
   async changePassword(changePassword: ChangePassword) {
     try {
       const userDB = await this.userModel
