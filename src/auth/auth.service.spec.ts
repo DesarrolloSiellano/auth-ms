@@ -695,6 +695,51 @@ describe('AuthService', () => {
     });
   });
 
+  describe('verifyCurrentPassword', () => {
+    it('devuelve true cuando la contraseña coincide', async () => {
+      mockUserModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ _id: 'abc123', password: 'hash' }),
+      });
+      jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(true);
+
+      await expect(
+        service.verifyCurrentPassword('abc123', 'secret'),
+      ).resolves.toBe(true);
+    });
+
+    it('devuelve false cuando la contraseña no coincide', async () => {
+      mockUserModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ _id: 'abc123', password: 'hash' }),
+      });
+      jest.spyOn(encryptionService, 'verifyPassword').mockResolvedValue(false);
+
+      await expect(
+        service.verifyCurrentPassword('abc123', 'wrong'),
+      ).resolves.toBe(false);
+    });
+
+    it('devuelve false si el usuario no existe o no tiene contraseña', async () => {
+      mockUserModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      });
+      await expect(
+        service.verifyCurrentPassword('missing', 'secret'),
+      ).resolves.toBe(false);
+
+      mockUserModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ _id: 'abc123' }),
+      });
+      await expect(
+        service.verifyCurrentPassword('abc123', 'secret'),
+      ).resolves.toBe(false);
+    });
+
+    it('devuelve false con argumentos vacíos', async () => {
+      await expect(service.verifyCurrentPassword('', 'secret')).resolves.toBe(false);
+      await expect(service.verifyCurrentPassword('abc123', '')).resolves.toBe(false);
+    });
+  });
+
   describe('setPasswordWithToken', () => {
     it('establece la contraseña y limpia el token', async () => {
       const user = {
