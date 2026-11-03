@@ -408,4 +408,23 @@ export class AuthController {
   msRecoveryPassword(@Payload() changePassword: ChangePassword) {
     return this.authService.changePassword(changePassword);
   }
+
+  /**
+   * Verifica la contraseña actual de un usuario (sin cambiarla). Usado por
+   * apps consumidoras para confirmar operaciones destructivas.
+   */
+  @MessagePattern({ cmd: 'verifyPassword' })
+  async msVerifyPassword(
+    @Payload() payload: { userId?: string; id?: string; password?: string },
+  ) {
+    const valid = await this.authService.verifyCurrentPassword(
+      payload?.userId ?? payload?.id ?? '',
+      payload?.password ?? '',
+    );
+    return {
+      message: 'Password checked',
+      data: { valid },
+      meta: { totalData: 1 },
+    };
+  }
 }
